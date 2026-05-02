@@ -13,6 +13,9 @@ import TrackTicket from './pages/TrackTicket';
 import AgentDashboard from './pages/AgentDashboard';
 import AgentTicketDetail from './pages/AgentTicketDetail';
 import MyTickets from './pages/MyTickets';
+import SuperAdminDashboard from './pages/SuperAdminDashboard';
+import AdminKnowledgeBase from './pages/AdminKnowledgeBase';
+import AdminCategories from './pages/AdminCategories';
 import Contact from './pages/Contact';
 import FAQ from './pages/FAQ';
 import Privacy from './pages/Privacy';
@@ -31,12 +34,15 @@ function App() {
             <Route path="/signup" element={<SignUp />} />
             <Route path="/signin" element={<SignIn />} />
             {/* <Route path="/dashboard" element={<Dashboard />} /> */}
+            <Route path="/admin/knowledge-base" element={<AdminKnowledgeBase />} />
+            <Route path="/admin/categories" element={<AdminCategories />} />
             <Route path="/kb" element={<KnowledgeBase />} />
             <Route path="/kb/:id" element={<KnowledgeArticle />} />
             <Route path="/track" element={<TrackTicket />} />
             <Route path="/agent/dashboard" element={<AgentDashboard />} />
             <Route path="/agent/tickets/:id" element={<AgentTicketDetail />} />
             <Route path="/my-tickets" element={<MyTickets />} />
+            <Route path="/super-admin/dashboard" element={<SuperAdminDashboard />} />
             {/* Footer Pages */}
             <Route path="/contact" element={<Contact />} />
             <Route path="/faq" element={<FAQ />} />

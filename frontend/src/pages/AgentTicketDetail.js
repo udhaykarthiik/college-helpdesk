@@ -15,16 +15,32 @@ function AgentTicketDetail() {
     const [cannedResponses, setCannedResponses] = useState([]);
     const [renderingCanned, setRenderingCanned] = useState(false);
     
-    // ========== ATTACHMENT STATES ==========
     const [attachments, setAttachments] = useState([]);
     const [selectedFile, setSelectedFile] = useState(null);
     const [uploading, setUploading] = useState(false);
+
+    const [aiAnalysis, setAiAnalysis] = useState(null);
+    const [aiSuggestedReply, setAiSuggestedReply] = useState('');
+    const [loadingAiReply, setLoadingAiReply] = useState(false);
 
     useEffect(() => {
         fetchTicket();
         fetchCannedResponses();
         fetchAttachments();
+        fetchAiAnalysis();
     }, [id]);
+
+    // Get back URL based on user role
+    const getBackUrl = () => {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+            const userData = JSON.parse(userStr);
+            if (userData.role === 'super_admin') {
+                return '/super-admin/dashboard';
+            }
+        }
+        return '/agent/dashboard';
+    };
 
     const fetchTicket = async () => {
         try {
@@ -34,7 +50,7 @@ function AgentTicketDetail() {
             setStatus(response.data.status);
         } catch (err) {
             console.error('Error fetching ticket:', err);
-            navigate('/agent/dashboard');
+            navigate(getBackUrl());
         } finally {
             setLoading(false);
         }
@@ -49,7 +65,6 @@ function AgentTicketDetail() {
         }
     };
 
-    // ========== FETCH ATTACHMENTS ==========
     const fetchAttachments = async () => {
         try {
             const response = await agentApi.getAttachments(id);
@@ -59,7 +74,32 @@ function AgentTicketDetail() {
         }
     };
 
-    // ========== HANDLE FILE UPLOAD ==========
+    const fetchAiAnalysis = async () => {
+        try {
+            const response = await agentApi.getTicket(id);
+            const aiNote = response.data.conversations?.find(
+                conv => conv.is_internal_note && conv.message && conv.message.includes('[AI ANALYSIS]')
+            );
+            if (aiNote) {
+                setAiAnalysis(aiNote.message);
+            }
+        } catch (err) {
+            console.error('Error fetching AI analysis:', err);
+        }
+    };
+
+    const getAiSuggestedReply = async () => {
+        setLoadingAiReply(true);
+        try {
+            const response = await agentApi.aiSuggestResponse(id);
+            setAiSuggestedReply(response.data.suggested_response);
+        } catch (err) {
+            console.error('Error getting AI suggested reply:', err);
+        } finally {
+            setLoadingAiReply(false);
+        }
+    };
+
     const handleFileUpload = async () => {
         if (!selectedFile) return;
         
@@ -68,7 +108,6 @@ function AgentTicketDetail() {
             await agentApi.addAttachment(id, selectedFile, 'agent');
             setSelectedFile(null);
             fetchAttachments();
-            // Clear file input
             const fileInput = document.getElementById('file-input');
             if (fileInput) fileInput.value = '';
         } catch (err) {
@@ -130,14 +169,21 @@ function AgentTicketDetail() {
 
     const handleAddInternalNote = async () => {
         if (!reply.trim()) return;
+        
+        if (submitting) return;
 
         setSubmitting(true);
         try {
-            await agentApi.quickNote(id, reply);
+            await agentApi.addConversation(id, {
+                sender_type: 'agent',
+                message: reply,
+                is_internal_note: true
+            });
             setReply('');
-            fetchTicket();
+            await fetchTicket();
         } catch (err) {
             console.error('Error adding note:', err);
+            alert('Failed to add internal note');
         } finally {
             setSubmitting(false);
         }
@@ -161,6 +207,36 @@ function AgentTicketDetail() {
         }
     };
 
+    const parseAiAnalysis = () => {
+        if (!aiAnalysis) return null;
+        
+        const result = {};
+        const lines = aiAnalysis.split('\n');
+        for (const line of lines) {
+            if (line.includes('Category:')) {
+                result.category = line.split(':')[1]?.trim();
+            }
+            if (line.includes('Priority:')) {
+                result.priority = line.split(':')[1]?.trim();
+            }
+            if (line.includes('Sentiment:')) {
+                result.sentiment = line.split(':')[1]?.trim();
+            }
+            if (line.includes('Summary:')) {
+                result.summary = line.split(':')[1]?.trim();
+            }
+        }
+        return result;
+    };
+
+    const aiData = parseAiAnalysis();
+
+    const getSenderName = (conv) => {
+        if (conv.is_internal_note) return 'Internal Note';
+        if (conv.sender_type === 'agent') return 'Agent';
+        return 'Customer';
+    };
+
     if (loading) {
         return <div className="loading">Loading ticket...</div>;
     }
@@ -172,23 +248,46 @@ function AgentTicketDetail() {
     return (
         <div className="ticket-detail-container">
             <div className="ticket-detail-header">
-                <button onClick={() => navigate('/agent/dashboard')} className="back-btn">
+                <button onClick={() => navigate(getBackUrl())} className="back-btn">
                     ← Back to Dashboard
                 </button>
                 <h1>Ticket #{ticket.id}: {ticket.title}</h1>
             </div>
 
             <div className="ticket-detail-grid">
-                {/* Left Column - Ticket Info */}
                 <div className="ticket-info-panel">
                     <div className="info-section">
                         <h3>Customer Information</h3>
-                        <p><strong>Name:</strong> {ticket.customer_name}</p>
-                        <p><strong>Email:</strong> {ticket.customer_email}</p>
-                        {ticket.customer_is_vip && (
-                            <p className="vip-badge">⭐ VIP Customer</p>
-                        )}
+                        <p><strong>Name:</strong> {ticket.raised_by_name || 'Guest User'}</p>
+                        <p><strong>Email:</strong> {ticket.raised_by_email || 'Not provided'}</p>
                     </div>
+
+                    {aiData && (
+                        <div className="ai-analysis-card">
+                            <div className="ai-header">
+                                <span className="ai-icon">AI</span>
+                                <h3>AI Analysis</h3>
+                            </div>
+                            <div className="ai-content">
+                                {aiData.category && (
+                                    <p><strong>Category:</strong> {aiData.category}</p>
+                                )}
+                                {aiData.priority && (
+                                    <p><strong>Priority:</strong> 
+                                        <span className={`priority-${aiData.priority?.toLowerCase()}`}> {aiData.priority}</span>
+                                    </p>
+                                )}
+                                {aiData.sentiment && (
+                                    <p><strong>Sentiment:</strong> 
+                                        <span className={`sentiment-${aiData.sentiment?.toLowerCase()}`}> {aiData.sentiment}</span>
+                                    </p>
+                                )}
+                                {aiData.summary && (
+                                    <p><strong>Summary:</strong> {aiData.summary}</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     <div className="info-section">
                         <h3>Ticket Details</h3>
@@ -224,17 +323,25 @@ function AgentTicketDetail() {
                     </div>
                 </div>
 
-                {/* Right Column - Conversations */}
                 <div className="conversations-panel">
                     <div className="conversations-header">
                         <h3>Conversation History</h3>
-                        <button 
-                            className="canned-btn"
-                            onClick={() => setShowCanned(!showCanned)}
-                            disabled={renderingCanned}
-                        >
-                            📋 Canned Responses {renderingCanned && '(Loading...)'}
-                        </button>
+                        <div className="header-buttons">
+                            <button 
+                                className="ai-suggest-btn"
+                                onClick={getAiSuggestedReply}
+                                disabled={loadingAiReply}
+                            >
+                                AI Suggest {loadingAiReply && '(Loading...)'}
+                            </button>
+                            <button 
+                                className="canned-btn"
+                                onClick={() => setShowCanned(!showCanned)}
+                                disabled={renderingCanned}
+                            >
+                                Canned Responses {renderingCanned && '(Loading...)'}
+                            </button>
+                        </div>
                     </div>
 
                     {showCanned && (
@@ -250,15 +357,18 @@ function AgentTicketDetail() {
                                     <strong>{cr.title}</strong> ({cr.shortcode})
                                 </button>
                             ))}
+                            {cannedResponses.length === 0 && (
+                                <div className="no-canned">No canned responses found. Create some in admin panel.</div>
+                            )}
                         </div>
                     )}
 
                     <div className="conversations-list">
                         {ticket.conversations?.map((conv, index) => (
-                            <div key={conv.id || index} className={`message ${conv.sender_type}`}>
+                            <div key={conv.id || index} className={`message ${conv.sender_type} ${conv.is_internal_note ? 'internal-note' : ''}`}>
                                 <div className="message-header">
                                     <span className="sender">
-                                        {conv.sender_type === 'agent' ? '👤 Agent' : '👤 Customer'}
+                                        {getSenderName(conv)}
                                     </span>
                                     <span className="time">
                                         {new Date(conv.created_at).toLocaleString()}
@@ -273,7 +383,6 @@ function AgentTicketDetail() {
                         ))}
                     </div>
 
-                    {/* ========== ATTACHMENTS SECTION ========== */}
                     <div className="attachment-section">
                         <h4>Attachments</h4>
                         <div className="attachment-list">
@@ -306,6 +415,20 @@ function AgentTicketDetail() {
                         </div>
                     </div>
 
+                    {aiSuggestedReply && (
+                        <div className="ai-suggestion">
+                            <div className="ai-suggestion-header">
+                                <span>AI Suggested Reply:</span>
+                                <button onClick={() => setReply(aiSuggestedReply)} className="use-suggestion-btn">
+                                    Use This
+                                </button>
+                            </div>
+                            <div className="ai-suggestion-content">
+                                {aiSuggestedReply}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="reply-form">
                         <h3>Reply to Customer</h3>
                         <textarea
@@ -316,6 +439,7 @@ function AgentTicketDetail() {
                         />
                         <div className="reply-buttons">
                             <button 
+                                type="button"
                                 onClick={handleAddConversation}
                                 disabled={submitting || !reply.trim()}
                                 className="send-btn"
@@ -323,6 +447,7 @@ function AgentTicketDetail() {
                                 {submitting ? 'Sending...' : 'Send Reply'}
                             </button>
                             <button 
+                                type="button"
                                 onClick={handleAddInternalNote}
                                 disabled={submitting || !reply.trim()}
                                 className="note-btn"

@@ -5,53 +5,73 @@ from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.db.models import Q, Count
 from django.utils import timezone
 from django.conf import settings
+from django.contrib.auth.models import User
 import os
 import re
 
-from .models import Organization, Customer, Agent, Ticket, Conversation, CannedCategory, CannedResponse, RoutingRule, TicketAttachment, KnowledgeCategory, KnowledgeArticle, ArticleFeedback
+from .models import (
+    College, Department, UserProfile, TicketCategory, Agent, AgentDepartment,
+    Ticket, Conversation, CannedCategory, CannedResponse, RoutingRule,
+    TicketAttachment, KnowledgeCategory, KnowledgeArticle, ArticleFeedback
+)
 
 from .serializers import (
-    OrganizationSerializer, CustomerSerializer, AgentSerializer,
+    CollegeSerializer, DepartmentSerializer, UserProfileSerializer, TicketCategorySerializer,
+    AgentSerializer, AgentDepartmentSerializer,
     TicketSerializer, ConversationSerializer, CannedCategorySerializer,
     CannedResponseSerializer, CannedResponseRenderSerializer, RoutingRuleSerializer,
     TicketAttachmentSerializer, PublicTicketSerializer,
     KnowledgeCategorySerializer, KnowledgeArticleSerializer, 
     PublicKnowledgeArticleSerializer, ArticleFeedbackSerializer
 )
+
 from .ai_services import classify_ticket, generate_canned_response, check_ai_health
 from .email_utils import send_ticket_confirmation, send_reply_notification
-from .order_utils import check_order_auto_response
 
-class OrganizationViewSet(viewsets.ModelViewSet):
-    queryset = Organization.objects.all()
-    serializer_class = OrganizationSerializer
 
-class CustomerViewSet(viewsets.ModelViewSet):
-    queryset = Customer.objects.all()
-    serializer_class = CustomerSerializer
+class CollegeViewSet(viewsets.ModelViewSet):
+    queryset = College.objects.all()
+    serializer_class = CollegeSerializer
+
+
+class DepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.all()
+    serializer_class = DepartmentSerializer
+    
+    def get_queryset(self):
+        queryset = Department.objects.all()
+        college_id = self.request.query_params.get('college', None)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id)
+        return queryset
+
+
+class UserProfileViewSet(viewsets.ModelViewSet):
+    queryset = UserProfile.objects.all()
+    serializer_class = UserProfileSerializer
+    
+    def get_queryset(self):
+        queryset = UserProfile.objects.all()
+        user_type = self.request.query_params.get('user_type', None)
+        if user_type:
+            queryset = queryset.filter(user_type=user_type)
+        college_id = self.request.query_params.get('college', None)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id)
+        return queryset
     
     @action(detail=True, methods=['get'])
     def tickets(self, request, pk=None):
-        customer = self.get_object()
-        tickets = Ticket.objects.filter(customer=customer).order_by('-created_at')
+        profile = self.get_object()
+        tickets = Ticket.objects.filter(raised_by=profile).order_by('-created_at')
         serializer = TicketSerializer(tickets, many=True, context={'request': request})
         return Response(serializer.data)
-    
-    @action(detail=True, methods=['post'])
-    def check_vip(self, request, pk=None):
-        """Manually trigger VIP status check"""
-        customer = self.get_object()
-        old_status = customer.is_vip
-        new_status = customer.check_vip_status()
-        
-        return Response({
-            "customer_id": customer.id,
-            "name": customer.name,
-            "old_vip_status": old_status,
-            "new_vip_status": new_status,
-            "total_spent": str(customer.total_spent),
-            "threshold": str(customer.vip_threshold)
-        })
+
+
+class TicketCategoryViewSet(viewsets.ModelViewSet):
+    queryset = TicketCategory.objects.all()
+    serializer_class = TicketCategorySerializer
+
 
 class AgentViewSet(viewsets.ModelViewSet):
     queryset = Agent.objects.all()
@@ -59,48 +79,123 @@ class AgentViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = Agent.objects.all()
-        org_id = self.request.query_params.get('organization', None)
-        if org_id:
-            queryset = queryset.filter(organization_id=org_id)
+        college_id = self.request.query_params.get('college', None)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id)
+        category_id = self.request.query_params.get('category', None)
+        if category_id:
+            queryset = queryset.filter(categories=category_id)
         return queryset
     
-    @action(detail=False, methods=['get'])
-    def by_department(self, request):
-        department = request.query_params.get('department', None)
-        org_id = request.query_params.get('organization', 1)
-        
-        if department:
-            agents = Agent.objects.filter(department=department, organization_id=org_id)
-            serializer = self.get_serializer(agents, many=True)
-            return Response(serializer.data)
-        return Response({"error": "Department parameter required"}, status=400)
+    @action(detail=True, methods=['get'])
+    def tickets(self, request, pk=None):
+        agent = self.get_object()
+        tickets = Ticket.objects.filter(assigned_to=agent).order_by('-created_at')
+        serializer = TicketSerializer(tickets, many=True, context={'request': request})
+        return Response(serializer.data)
     
     @action(detail=True, methods=['get'])
-    def mentions(self, request, pk=None):
-        """Get all tickets where this agent was mentioned"""
+    def available_categories(self, request, pk=None):
         agent = self.get_object()
-        conversations = Conversation.objects.filter(
-            mentions=agent,
-            is_internal_note=True
-        ).select_related('ticket').order_by('-created_at')
+        categories = agent.categories.all()
+        serializer = TicketCategorySerializer(categories, many=True)
+        return Response(serializer.data)
+
+
+class AgentDepartmentViewSet(viewsets.ModelViewSet):
+    queryset = AgentDepartment.objects.all()
+    serializer_class = AgentDepartmentSerializer
+
+
+class AdminStatsViewSet(viewsets.ViewSet):
+    
+    def list(self, request):
+        if not request.user.is_superuser:
+            return Response({"error": "Unauthorized"}, status=403)
         
-        tickets = []
-        for conv in conversations:
-            tickets.append({
-                'ticket_id': conv.ticket.id,
-                'ticket_title': conv.ticket.title,
-                'mentioned_by': conv.sender_name,
-                'mentioned_at': conv.created_at,
-                'message': conv.message[:100] + '...' if len(conv.message) > 100 else conv.message,
-                'ticket_status': conv.ticket.status,
-                'ticket_priority': conv.ticket.priority
+        students = UserProfile.objects.filter(user_type='student').count()
+        staff = UserProfile.objects.filter(user_type='staff').count()
+        parents = UserProfile.objects.filter(user_type='parent').count()
+        agents = Agent.objects.count()
+        
+        total_tickets = Ticket.objects.count()
+        open_tickets = Ticket.objects.filter(status__in=['new', 'open']).count()
+        resolved_tickets = Ticket.objects.filter(status='resolved').count()
+        
+        recent_tickets = Ticket.objects.all().order_by('-created_at')[:10]
+        recent_data = TicketSerializer(recent_tickets, many=True, context={'request': request}).data
+        
+        all_users = []
+        for profile in UserProfile.objects.all().select_related('user', 'department'):
+            all_users.append({
+                'id': profile.id,
+                'user_id': profile.user.id,
+                'username': profile.user.username,
+                'email': profile.user.email,
+                'first_name': profile.user.first_name,
+                'last_name': profile.user.last_name,
+                'role': profile.user_type,
+                'roll_number': profile.roll_number,
+                'employee_id': profile.employee_id,
+                'department': profile.department.name if profile.department else None,
+                'is_active': profile.user.is_active,
+                'created_at': profile.created_at
             })
         
         return Response({
-            'agent': agent.user.username,
-            'total_mentions': conversations.count(),
-            'mentions': tickets
+            'stats': {
+                'students': students,
+                'staff': staff,
+                'parents': parents,
+                'agents': agents,
+                'total_tickets': total_tickets,
+                'open_tickets': open_tickets,
+                'resolved_tickets': resolved_tickets,
+            },
+            'recent_tickets': recent_data,
+            'users': all_users
         })
+    
+    @action(detail=True, methods=['patch'])
+    def update_role(self, request, pk=None):
+        if not request.user.is_superuser:
+            return Response({"error": "Unauthorized"}, status=403)
+        
+        try:
+            profile = UserProfile.objects.get(id=pk)
+            new_role = request.data.get('role')
+            
+            if new_role not in ['student', 'staff', 'parent', 'agent']:
+                return Response({"error": "Invalid role"}, status=400)
+            
+            profile.user_type = new_role
+            profile.save()
+            
+            if new_role == 'agent':
+                Agent.objects.get_or_create(
+                    user=profile.user,
+                    defaults={'college': profile.college}
+                )
+            
+            return Response({"success": True, "new_role": new_role})
+            
+        except UserProfile.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+    
+    @action(detail=True, methods=['delete'])
+    def delete_user(self, request, pk=None):
+        if not request.user.is_superuser:
+            return Response({"error": "Unauthorized"}, status=403)
+        
+        try:
+            profile = UserProfile.objects.get(id=pk)
+            user = profile.user
+            user.delete()
+            return Response({"success": True, "message": "User deleted successfully"})
+            
+        except UserProfile.DoesNotExist:
+            return Response({"error": "User not found"}, status=404)
+
 
 class TicketViewSet(viewsets.ModelViewSet):
     queryset = Ticket.objects.all().order_by('-created_at')
@@ -109,17 +204,14 @@ class TicketViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         queryset = Ticket.objects.all().order_by('-created_at')
         
-        # Filter by status
         status = self.request.query_params.get('status', None)
         if status:
             queryset = queryset.filter(status=status)
         
-        # Filter by priority
         priority = self.request.query_params.get('priority', None)
         if priority:
             queryset = queryset.filter(priority=priority)
         
-        # Filter by assigned agent
         assigned = self.request.query_params.get('assigned', None)
         if assigned:
             if assigned == 'unassigned':
@@ -127,25 +219,17 @@ class TicketViewSet(viewsets.ModelViewSet):
             else:
                 queryset = queryset.filter(assigned_to=assigned)
         
-        # Filter by VIP
-        vip = self.request.query_params.get('vip', None)
-        if vip == 'true':
-            queryset = queryset.filter(customer__is_vip=True)
-        elif vip == 'false':
-            queryset = queryset.filter(customer__is_vip=False)
+        category = self.request.query_params.get('category', None)
+        if category:
+            queryset = queryset.filter(category_id=category)
         
-        # Filter by channel
-        channel = self.request.query_params.get('channel', None)
-        if channel:
-            queryset = queryset.filter(channel=channel)
+        raised_by = self.request.query_params.get('raised_by', None)
+        if raised_by:
+            queryset = queryset.filter(raised_by_id=raised_by)
         
-        # Filter by mentions
-        mentioned = self.request.query_params.get('mentioned', None)
-        if mentioned:
-            queryset = queryset.filter(
-                conversations__mentions__isnull=False,
-                conversations__is_internal_note=True
-            ).distinct()
+        user_type = self.request.query_params.get('user_type', None)
+        if user_type:
+            queryset = queryset.filter(raised_by__user_type=user_type)
         
         return queryset
     
@@ -155,193 +239,115 @@ class TicketViewSet(viewsets.ModelViewSet):
         return context
     
     def apply_routing_rules(self, ticket):
-        """Auto-assign ticket based on keywords"""
-        rules = RoutingRule.objects.filter(
-            organization=ticket.customer.organization,
-            is_active=True
-        )
+        """Auto-assign ticket based on category"""
+        print(f"Applying routing rules for ticket #{ticket.id}, category: {ticket.category.display_name}")
         
-        for rule in rules:
-            ticket_text = f"{ticket.title} {ticket.description}".lower()
-            
-            for keyword in rule.get_keywords_list():
-                if keyword in ticket_text:
-                    ticket.priority = rule.priority
-                    
-                    agent = Agent.objects.filter(
-                        organization=ticket.customer.organization,
-                        department=rule.department
-                    ).first()
-                    
-                    if agent:
-                        ticket.assigned_to = agent
-                        ticket.status = 'open'
-                    
-                    ticket.save()
-                    
-                    Conversation.objects.create(
-                        ticket=ticket,
-                        sender_type='agent',
-                        message=f"[SYSTEM] Auto-routed to {rule.department} department based on keyword: '{keyword}'",
-                        is_internal_note=True
-                    )
-                    return True
+        agent_assignments = AgentDepartment.objects.filter(
+            category=ticket.category
+        ).select_related('agent')
         
-        return False
-    
-    def apply_vip_handling(self, ticket):
-        """Apply VIP benefits to ticket if customer is VIP"""
-        customer = ticket.customer
+        print(f"Found {agent_assignments.count()} agents for this category")
         
-        was_vip = customer.is_vip
-        customer.check_vip_status()
-        
-        if customer.is_vip:
-            if ticket.priority == 'low':
-                ticket.priority = 'medium'
-            elif ticket.priority == 'medium':
-                ticket.priority = 'high'
-            elif ticket.priority == 'high':
-                ticket.priority = 'urgent'
-            
-            if not ticket.assigned_to:
-                senior_agent = Agent.objects.filter(
-                    organization=customer.organization,
-                    is_senior=True
-                ).first()
-                if senior_agent:
-                    ticket.assigned_to = senior_agent
-                    ticket.status = 'open'
-            
+        if agent_assignments.exists():
+            primary = agent_assignments.filter(is_primary=True).first()
+            if primary:
+                ticket.assigned_to = primary.agent
+                print(f"Assigned to primary agent: {primary.agent.user.username}")
+            else:
+                ticket.assigned_to = agent_assignments.first().agent
+                print(f"Assigned to agent: {ticket.assigned_to.user.username}")
+            ticket.status = 'open'
             ticket.save()
             
-            if not was_vip and customer.is_vip:
-                Conversation.objects.create(
-                    ticket=ticket,
-                    sender_type='agent',
-                    message="[SYSTEM] Customer automatically upgraded to VIP based on total spending.",
-                    is_internal_note=True
-                )
-            elif was_vip and customer.is_vip:
-                Conversation.objects.create(
-                    ticket=ticket,
-                    sender_type='agent',
-                    message=f"[SYSTEM] VIP customer - Priority boosted to {ticket.priority}",
-                    is_internal_note=True
-                )
-            
+            Conversation.objects.create(
+                ticket=ticket,
+                sender_type='agent',
+                message=f"[SYSTEM] Auto-assigned to {ticket.assigned_to.user.username} for {ticket.category.display_name}",
+                is_internal_note=True
+            )
             return True
+        
+        print("No agent found for this category")
         return False
     
     def create(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
+        data = request.data.copy()
+        
+        if request.user.is_authenticated:
+            try:
+                user_profile = UserProfile.objects.get(user=request.user)
+                data['raised_by'] = user_profile.id
+            except UserProfile.DoesNotExist:
+                return Response({"error": "User profile not found. Please complete your profile."}, status=400)
+        
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         
-        # ========== NEW: Check for order status query ==========
-        ticket_data = request.data.copy()
+        ticket = serializer.save()
         
-        # Try to auto-respond to order queries
-        temp_ticket = Ticket(
-            title=ticket_data.get('title', ''),
-            description=ticket_data.get('description', ''),
-            customer_id=ticket_data.get('customer', 1)  # Temporary for checking
+        Conversation.objects.create(
+            ticket=ticket,
+            sender_type='user',
+            message=request.data.get('description', ''),
+            is_internal_note=False
         )
         
-        auto_responded, auto_response = check_order_auto_response(temp_ticket)
-        # ======================================================
-        
-        # Get AI analysis (optional)
+        # ========== AI ANALYSIS ==========
         try:
-            ai_analysis = classify_ticket(
-                request.data.get('title', ''),
-                request.data.get('description', '')
-            )
+            ai_result = classify_ticket(ticket.title, ticket.description)
             
-            # Auto-apply AI suggestions
-            ticket_data = {
-                **request.data,
-                'priority': ai_analysis.get('priority', request.data.get('priority', 'medium')),
-            }
-            
-            # If needs escalation, set high priority
-            if ai_analysis.get('needs_escalation'):
-                ticket_data['priority'] = 'urgent'
-            
-            serializer = self.get_serializer(data=ticket_data)
-            serializer.is_valid(raise_exception=True)
-            ticket = serializer.save()
-            
-            # Add AI analysis as internal note
             Conversation.objects.create(
                 ticket=ticket,
                 sender_type='agent',
-                message=f"[AI ANALYSIS] Category: {ai_analysis.get('category', 'unknown')}, "
-                        f"Sentiment: {ai_analysis.get('sentiment', 'unknown')}, "
-                        f"Summary: {ai_analysis.get('summary', '')}",
+                message=f"[AI ANALYSIS]\n"
+                        f"Category: {ai_result.get('category', 'N/A')}\n"
+                        f"Priority: {ai_result.get('priority', 'N/A')}\n"
+                        f"Sentiment: {ai_result.get('sentiment', 'N/A')}\n"
+                        f"Summary: {ai_result.get('summary', 'N/A')}",
                 is_internal_note=True
             )
+            print(f"✨ AI analysis added to ticket #{ticket.id}")
         except Exception as e:
-            # If AI fails, still create ticket normally
-            print(f"AI analysis failed: {e}")
-            ticket = serializer.save()
+            print(f"⚠️ AI analysis failed: {e}")
+        # =================================
         
-        # ========== NEW: Add auto-response if order query detected ==========
-        if auto_responded:
-            Conversation.objects.create(
-                ticket=ticket,
-                sender_type='agent',
-                message=auto_response,
-                is_internal_note=False
-            )
-            print(f"🤖 Auto-responded to order query for ticket #{ticket.id}")
-        # ====================================================================
+        self.apply_routing_rules(ticket)
         
-        # Send email confirmation
         try:
             from .email_utils import send_ticket_confirmation
             send_ticket_confirmation(ticket)
         except Exception as e:
             print(f"Email sending failed: {e}")
         
-        self.apply_routing_rules(ticket)
-        self.apply_vip_handling(ticket)
-        
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
     
     @action(detail=True, methods=['get'])
     def status(self, request, pk=None):
-        """Public endpoint to check ticket status - no login required"""
         try:
             ticket = self.get_object()
             email = request.query_params.get('email')
             
-            # Verify email matches ticket customer
-            if not email or ticket.customer.email != email:
+            if not email or ticket.raised_by.user.email != email:
                 return Response(
                     {"error": "Invalid email or ticket ID"}, 
                     status=status.HTTP_404_NOT_FOUND
                 )
             
-            # Return ticket with conversations
             serializer = TicketSerializer(ticket, context={'request': request})
             return Response(serializer.data)
             
-        except Exception as e:
+        except Exception:
             return Response(
                 {"error": "Ticket not found"}, 
                 status=status.HTTP_404_NOT_FOUND
             )
     
-    # ========== PUBLIC FORM (NO LOGIN REQUIRED) ==========
-    
     @action(detail=False, methods=['post'], authentication_classes=[], permission_classes=[])
     def public_create(self, request):
-        """Public endpoint for customers to create tickets without login"""
-        
-        # Rate limiting
+        email = request.data.get('email', '')
         recent_tickets = Ticket.objects.filter(
-            customer__email=request.data.get('customer_email'),
+            raised_by__user__email=email,
             created_at__gte=timezone.now() - timezone.timedelta(hours=1)
         ).count()
         
@@ -350,31 +356,29 @@ class TicketViewSet(viewsets.ModelViewSet):
                 "error": "Too many tickets from this email. Please wait."
             }, status=429)
         
-        # Validate email format
-        email = request.data.get('customer_email', '')
         if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
             return Response({"error": "Invalid email format"}, status=400)
         
-        # Spam check
         spam_keywords = ['viagra', 'casino', 'lottery', 'porn', 'sex', 'gambling']
         content = f"{request.data.get('title', '')} {request.data.get('description', '')}".lower()
         if any(keyword in content for keyword in spam_keywords):
             return Response({"error": "Content flagged as spam"}, status=400)
         
-        # ========== NEW: Check for order status query BEFORE creating ==========
-        temp_ticket = Ticket(
-            title=request.data.get('title', ''),
-            description=request.data.get('description', ''),
-            customer_id=1  # Temporary
-        )
-        auto_responded, auto_response = check_order_auto_response(temp_ticket)
-        # =======================================================================
+        data = request.data.copy()
+        if not data.get('priority'):
+            data['priority'] = 'medium'
         
-        serializer = PublicTicketSerializer(data=request.data)
+        serializer = PublicTicketSerializer(data=data)
         if serializer.is_valid():
             ticket = serializer.save()
             
-            # Create auto-response in conversation
+            Conversation.objects.create(
+                ticket=ticket,
+                sender_type='user',
+                message=request.data.get('description', ''),
+                is_internal_note=False
+            )
+            
             Conversation.objects.create(
                 ticket=ticket,
                 sender_type='agent',
@@ -382,18 +386,26 @@ class TicketViewSet(viewsets.ModelViewSet):
                 is_internal_note=False
             )
             
-            # ========== NEW: Add auto-response if order query detected ==========
-            if auto_responded:
+            # ========== AI ANALYSIS FOR PUBLIC TICKETS ==========
+            try:
+                ai_result = classify_ticket(ticket.title, ticket.description)
                 Conversation.objects.create(
                     ticket=ticket,
                     sender_type='agent',
-                    message=auto_response,
-                    is_internal_note=False
+                    message=f"[AI ANALYSIS]\n"
+                            f"Category: {ai_result.get('category', 'N/A')}\n"
+                            f"Priority: {ai_result.get('priority', 'N/A')}\n"
+                            f"Sentiment: {ai_result.get('sentiment', 'N/A')}\n"
+                            f"Summary: {ai_result.get('summary', 'N/A')}",
+                    is_internal_note=True
                 )
-                print(f"🤖 Auto-responded to order query for public ticket #{ticket.id}")
-            # ====================================================================
+                print(f"✨ AI analysis added to public ticket #{ticket.id}")
+            except Exception as e:
+                print(f"⚠️ AI analysis failed: {e}")
+            # ===================================================
             
-            # Send email confirmation
+            self.apply_routing_rules(ticket)
+            
             try:
                 from .email_utils import send_ticket_confirmation
                 send_ticket_confirmation(ticket)
@@ -403,53 +415,49 @@ class TicketViewSet(viewsets.ModelViewSet):
             return Response({
                 'success': True,
                 'ticket_id': ticket.id,
-                'message': 'Your ticket has been created. Check your email for confirmation.',
-                'auto_responded': auto_responded
+                'message': 'Your ticket has been created. Check your email for confirmation.'
             }, status=status.HTTP_201_CREATED)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
-    # ========== ATTACHMENT HANDLING ==========
-    
-    @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
-    def add_attachment(self, request, pk=None):
-        """Add attachment to existing ticket"""
+    # ========== CUSTOMER REPLY ENDPOINT ==========
+    @action(detail=True, methods=['post'], authentication_classes=[], permission_classes=[])
+    def add_user_reply(self, request, pk=None):
+        """Allow users to add reply to their ticket (no login required)"""
         ticket = self.get_object()
-        file_obj = request.FILES.get('file')
-        uploaded_by = request.data.get('uploaded_by', 'agent')
+        email = request.data.get('email')
+        message = request.data.get('message')
         
-        if not file_obj:
-            return Response({"error": "No file provided"}, status=400)
+        # Verify email matches ticket user
+        if not email or ticket.raised_by.user.email != email:
+            return Response({"error": "Unauthorized - Email does not match ticket"}, status=401)
         
-        # Check file size (limit 5MB)
-        if file_obj.size > 5 * 1024 * 1024:
-            return Response({"error": "File size exceeds 5MB limit"}, status=400)
+        if not message or not message.strip():
+            return Response({"error": "Message is required"}, status=400)
         
-        # Check file type (optional)
-        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'application/pdf', 'text/plain']
-        if file_obj.content_type not in allowed_types:
-            return Response({"error": f"File type not allowed. Allowed: {allowed_types}"}, status=400)
-        
-        attachment = TicketAttachment.objects.create(
+        # Create conversation
+        conversation = Conversation.objects.create(
             ticket=ticket,
-            file=file_obj,
-            filename=file_obj.name,
-            file_size=file_obj.size,
-            uploaded_by=uploaded_by
+            sender_type='user',
+            message=message.strip(),
+            is_internal_note=False
         )
         
-        serializer = TicketAttachmentSerializer(attachment, context={'request': request})
-        return Response(serializer.data, status=201)
-    
-    @action(detail=True, methods=['get'])
-    def attachments(self, request, pk=None):
-        """Get all attachments for a ticket"""
-        ticket = self.get_object()
-        attachments = ticket.attachments.all()
-        serializer = TicketAttachmentSerializer(attachments, many=True, context={'request': request})
-        return Response(serializer.data)
-    
-    # ========== EXISTING ACTIONS ==========
+        # Update ticket status to open if it was resolved/closed
+        if ticket.status in ['resolved', 'closed']:
+            ticket.status = 'open'
+            ticket.save()
+        
+        # Notify agents about new reply (optional email)
+        print(f"📨 User reply added to ticket #{ticket.id}")
+        
+        serializer = ConversationSerializer(conversation, context={'request': request})
+        return Response({
+            "success": True,
+            "conversation": serializer.data,
+            "message": "Your reply has been added successfully"
+        }, status=status.HTTP_201_CREATED)
+    # ============================================
     
     @action(detail=True, methods=['post'])
     def assign(self, request, pk=None):
@@ -481,30 +489,30 @@ class TicketViewSet(viewsets.ModelViewSet):
         except Agent.DoesNotExist:
             return Response({"error": "Agent not found"}, status=404)
     
-    @action(detail=True, methods=['post'])  
+    @action(detail=True, methods=['post'])
     def add_conversation(self, request, pk=None):
         ticket = self.get_object()
         
+        is_internal = request.data.get('is_internal_note', False)
+        sender = request.data.get('sender_type', 'agent')
+        
         conversation = Conversation.objects.create(
             ticket=ticket,
-            sender_type=request.data.get('sender_type', 'agent'),
+            sender_type=sender,
             message=request.data['message'],
-            is_internal_note=request.data.get('is_internal_note', False)
+            is_internal_note=is_internal
         )
-    
-        # ========== SEND EMAIL IF IT'S AN AGENT REPLY (NOT INTERNAL NOTE) ==========
-        if conversation.sender_type == 'agent' and not conversation.is_internal_note:
+        
+        if sender == 'agent' and not is_internal:
             try:
                 from .email_utils import send_reply_notification
                 send_reply_notification(ticket, conversation)
             except Exception as e:
                 print(f"Reply email sending failed: {e}")
-        # ============================================================================
         
         serializer = ConversationSerializer(conversation, context={'request': request})
         return Response(serializer.data, status=status.HTTP_201_CREATED)
     
-
     @action(detail=True, methods=['get'])
     def conversations(self, request, pk=None):
         ticket = self.get_object()
@@ -535,17 +543,6 @@ class TicketViewSet(viewsets.ModelViewSet):
         if applied:
             return Response({"status": "rerouted", "ticket": TicketSerializer(ticket, context={'request': request}).data})
         return Response({"status": "no rules applied", "ticket": TicketSerializer(ticket, context={'request': request}).data})
-    
-    @action(detail=True, methods=['post'])
-    def check_vip(self, request, pk=None):
-        ticket = self.get_object()
-        applied = self.apply_vip_handling(ticket)
-        return Response({
-            "status": "vip_handling_applied" if applied else "not_vip",
-            "ticket": TicketSerializer(ticket, context={'request': request}).data
-        })
-    
-    # ========== QUICK ACTIONS ==========
     
     @action(detail=True, methods=['post'])
     def quick_resolve(self, request, pk=None):
@@ -625,7 +622,6 @@ class TicketViewSet(viewsets.ModelViewSet):
             "new_status": new_status
         })
     
-
     @action(detail=True, methods=['post'])
     def quick_note(self, request, pk=None):
         ticket = self.get_object()
@@ -638,18 +634,13 @@ class TicketViewSet(viewsets.ModelViewSet):
             ticket=ticket,
             sender_type='agent',
             message=note,
-            is_internal_note=True  # Quick notes are always internal
+            is_internal_note=True
         )
-        
-        # Quick notes are internal, so NO EMAIL sent
-        
-        mentioned = conversation.mentions.all()
         
         return Response({
             "status": "note_added",
             "note_id": conversation.id,
-            "message": "Internal note added successfully",
-            "mentions": [agent.user.username for agent in mentioned] if mentioned else []
+            "message": "Internal note added successfully"
         })
     
     @action(detail=True, methods=['get'])
@@ -660,105 +651,29 @@ class TicketViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         age_hours = (now - ticket.created_at).total_seconds() / 3600
         
-        mentions = Conversation.objects.filter(
-            ticket=ticket,
-            is_internal_note=True,
-            mentions__isnull=False
-        ).count()
-        
         attachments_count = ticket.attachments.count()
         
         return Response({
             "ticket_id": ticket.id,
             "title": ticket.title,
-            "customer": ticket.customer.name,
-            "customer_email": ticket.customer.email,
-            "customer_vip": ticket.customer.is_vip,
+            "raised_by": ticket.raised_by.user.get_full_name() or ticket.raised_by.user.username,
+            "raised_by_email": ticket.raised_by.user.email,
+            "category": ticket.category.display_name,
             "status": ticket.status,
             "priority": ticket.priority,
-            "channel": ticket.channel,
             "age_hours": round(age_hours, 1),
             "assigned_to": ticket.assigned_to.user.username if ticket.assigned_to else None,
-            "total_mentions": mentions,
             "total_attachments": attachments_count,
             "recent_activity": [
                 {
                     "type": "note" if c.is_internal_note else "message",
                     "from": c.sender_name,
                     "time": c.created_at,
-                    "preview": c.message[:50] + "..." if len(c.message) > 50 else c.message,
-                    "mentions": [agent.user.username for agent in c.mentions.all()] if c.mentions.exists() else []
+                    "preview": c.message[:50] + "..." if len(c.message) > 50 else c.message
                 }
                 for c in recent
             ]
         })
-    
-    # ========== MENTIONS ==========
-    
-    @action(detail=True, methods=['get'])
-    def mentions(self, request, pk=None):
-        ticket = self.get_object()
-        mentions = Conversation.objects.filter(
-            ticket=ticket,
-            is_internal_note=True,
-            mentions__isnull=False
-        ).order_by('-created_at')
-        
-        result = []
-        for conv in mentions:
-            result.append({
-                'conversation_id': conv.id,
-                'message': conv.message,
-                'mentioned_by': conv.sender_name,
-                'mentioned_at': conv.created_at,
-                'mentioned_agents': [
-                    {
-                        'id': agent.id,
-                        'username': agent.user.username,
-                        'department': agent.department
-                    }
-                    for agent in conv.mentions.all()
-                ]
-            })
-        
-        return Response({
-            'ticket_id': ticket.id,
-            'total_mentions': mentions.count(),
-            'mentions': result
-        })
-    
-    @action(detail=False, methods=['get'])
-    def mentioned_me(self, request):
-        if not request.user.is_authenticated:
-            return Response({"error": "Authentication required"}, status=401)
-        
-        try:
-            agent = Agent.objects.get(user=request.user)
-            conversations = Conversation.objects.filter(
-                mentions=agent,
-                is_internal_note=True
-            ).select_related('ticket').order_by('-created_at')
-            
-            tickets = []
-            for conv in conversations:
-                tickets.append({
-                    'ticket_id': conv.ticket.id,
-                    'ticket_title': conv.ticket.title,
-                    'mentioned_by': conv.sender_name,
-                    'mentioned_at': conv.created_at,
-                    'message': conv.message,
-                    'ticket_status': conv.ticket.status,
-                    'ticket_priority': conv.ticket.priority
-                })
-            
-            return Response({
-                'total_mentions': conversations.count(),
-                'tickets': tickets
-            })
-        except Agent.DoesNotExist:
-            return Response({"error": "You are not registered as an agent"}, status=400)
-    
-    # ========== AI FEATURES ==========
     
     @action(detail=False, methods=['post'])
     def ai_analyze(self, request):
@@ -773,25 +688,38 @@ class TicketViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def ai_suggest_response(self, request, pk=None):
-        ticket = self.get_object()
-        latest_conversation = ticket.conversations.filter(
-            sender_type='customer'
-        ).last()
-        
-        if not latest_conversation:
-            return Response({"error": "No customer message found"}, status=400)
-        
-        suggested = generate_canned_response(
-            ticket.title,
-            latest_conversation.message
-        )
-        
-        return Response({"suggested_response": suggested})
+        try:
+            ticket = self.get_object()
+            
+            latest_conversation = ticket.conversations.filter(
+                sender_type='user'
+            ).last()
+            
+            if not latest_conversation:
+                return Response({"error": "No user message found"}, status=400)
+            
+            from .ai_services import generate_canned_response
+            suggested = generate_canned_response(
+                ticket.title,
+                latest_conversation.message
+            )
+            
+            if isinstance(suggested, dict):
+                suggested = suggested.get('suggested_response', str(suggested))
+            
+            return Response({"suggested_response": suggested})
+            
+        except Exception as e:
+            print(f"AI suggest error: {e}")
+            import traceback
+            traceback.print_exc()
+            return Response({"error": str(e)}, status=500)
     
     @action(detail=False, methods=['get'])
     def ai_status(self, request):
         health = check_ai_health()
         return Response(health)
+
 
 class ConversationViewSet(viewsets.ModelViewSet):
     queryset = Conversation.objects.all()
@@ -808,6 +736,7 @@ class ConversationViewSet(viewsets.ModelViewSet):
         context = super().get_serializer_context()
         context['request'] = self.request
         return context
+
 
 class TicketAttachmentViewSet(viewsets.ModelViewSet):
     queryset = TicketAttachment.objects.all()
@@ -829,7 +758,7 @@ class TicketAttachmentViewSet(viewsets.ModelViewSet):
     def create(self, request, *args, **kwargs):
         file_obj = request.FILES.get('file')
         ticket_id = request.data.get('ticket')
-        uploaded_by = request.data.get('uploaded_by', 'customer')
+        uploaded_by = request.data.get('uploaded_by', 'user')
         
         if not file_obj:
             return Response({"error": "No file provided"}, status=400)
@@ -837,7 +766,6 @@ class TicketAttachmentViewSet(viewsets.ModelViewSet):
         if not ticket_id:
             return Response({"error": "ticket_id required"}, status=400)
         
-        # Check file size
         if file_obj.size > 5 * 1024 * 1024:
             return Response({"error": "File size exceeds 5MB limit"}, status=400)
         
@@ -868,15 +796,16 @@ class TicketAttachmentViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(attachments, many=True)
         return Response(serializer.data)
 
+
 class CannedCategoryViewSet(viewsets.ModelViewSet):
     queryset = CannedCategory.objects.all()
     serializer_class = CannedCategorySerializer
     
     def get_queryset(self):
         queryset = CannedCategory.objects.all()
-        org_id = self.request.query_params.get('organization', None)
-        if org_id:
-            queryset = queryset.filter(organization_id=org_id)
+        college_id = self.request.query_params.get('college', None)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id)
         return queryset
     
     @action(detail=True, methods=['get'])
@@ -886,18 +815,19 @@ class CannedCategoryViewSet(viewsets.ModelViewSet):
         serializer = CannedResponseSerializer(responses, many=True)
         return Response(serializer.data)
 
+
 class CannedResponseViewSet(viewsets.ModelViewSet):
     queryset = CannedResponse.objects.all()
     serializer_class = CannedResponseSerializer
     
     def get_queryset(self):
         queryset = CannedResponse.objects.all()
-        org_id = self.request.query_params.get('organization', None)
+        college_id = self.request.query_params.get('college', None)
         category_id = self.request.query_params.get('category', None)
         department = self.request.query_params.get('department', None)
         
-        if org_id:
-            queryset = queryset.filter(organization_id=org_id)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id)
         if category_id:
             queryset = queryset.filter(category_id=category_id)
         if department:
@@ -907,7 +837,6 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['post'])
     def render(self, request):
-        """Render a canned response with actual ticket data"""
         canned_id = request.data.get('canned_response_id')
         ticket_id = request.data.get('ticket_id')
         
@@ -918,25 +847,15 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
             canned = CannedResponse.objects.get(id=canned_id)
             ticket = Ticket.objects.get(id=ticket_id)
             
-            # Simple context with only what we know exists
-            context = {
-                'customer_name': ticket.customer.name,
-                'customer_email': ticket.customer.email,
-                'ticket_id': str(ticket.id),
-                'ticket_title': ticket.title,
-                'ticket_status': ticket.status,
-                'ticket_priority': ticket.priority,
-                'order_number': 'N/A',
-                'status': ticket.status,
-                'tracking_link': '#',
-                'agent_name': request.user.username, 
-            }
+            context = ticket.get_variable_context()
             
-            # Manual replacement
             rendered = canned.content
             for key, value in context.items():
                 placeholder = f'{{{{{key}}}}}'
                 rendered = rendered.replace(placeholder, str(value))
+            
+            canned.usage_count += 1
+            canned.save(update_fields=['usage_count'])
             
             return Response({
                 'rendered_content': rendered,
@@ -956,14 +875,14 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
     def preview(self, request, pk=None):
         canned = self.get_object()
         sample_data = {
-            'customer_name': 'John Doe',
-            'customer_email': 'john@example.com',
-            'order_number': 'ORD-12345',
-            'order_status': 'shipped',
-            'tracking_link': 'https://track.example.com/12345',
-            'agent_name': 'Support Agent',
+            'raised_by_name': 'John Doe',
+            'raised_by_email': 'john@example.com',
             'ticket_id': 123,
-            'organization_name': 'QuickCart'
+            'ticket_title': 'Sample Issue',
+            'ticket_status': 'open',
+            'category': 'Academic',
+            'roll_number': 'CS2024001',
+            'student_type': 'Hosteller'
         }
         preview = canned.render(sample_data)
         return Response({
@@ -981,11 +900,11 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def popular(self, request):
-        org_id = request.query_params.get('organization', 1)
+        college_id = request.query_params.get('college', 1)
         limit = int(request.query_params.get('limit', 10))
         
         popular = CannedResponse.objects.filter(
-            organization_id=org_id
+            college_id=college_id
         ).order_by('-usage_count')[:limit]
         
         serializer = self.get_serializer(popular, many=True)
@@ -994,15 +913,15 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def by_department(self, request):
         department = request.query_params.get('department', '')
-        org_id = request.query_params.get('organization', 1)
+        college_id = request.query_params.get('college', 1)
         
         if department:
             responses = CannedResponse.objects.filter(
                 Q(department=department) | Q(department=''),
-                organization_id=org_id
+                college_id=college_id
             )
         else:
-            responses = CannedResponse.objects.filter(organization_id=org_id)
+            responses = CannedResponse.objects.filter(college_id=college_id)
         
         serializer = self.get_serializer(responses, many=True)
         return Response(serializer.data)
@@ -1010,7 +929,7 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def by_shortcode(self, request):
         shortcode = request.query_params.get('code', '')
-        org_id = request.query_params.get('organization', 1)
+        college_id = request.query_params.get('college', 1)
         
         if not shortcode:
             return Response({"error": "code parameter required"}, status=400)
@@ -1018,12 +937,13 @@ class CannedResponseViewSet(viewsets.ModelViewSet):
         try:
             response = CannedResponse.objects.get(
                 shortcode=shortcode,
-                organization_id=org_id
+                college_id=college_id
             )
             serializer = self.get_serializer(response)
             return Response(serializer.data)
         except CannedResponse.DoesNotExist:
             return Response({"error": "Canned response not found"}, status=404)
+
 
 class RoutingRuleViewSet(viewsets.ModelViewSet):
     queryset = RoutingRule.objects.all()
@@ -1031,59 +951,55 @@ class RoutingRuleViewSet(viewsets.ModelViewSet):
     
     def get_queryset(self):
         queryset = RoutingRule.objects.all()
-        org_id = self.request.query_params.get('organization', None)
-        if org_id:
-            queryset = queryset.filter(organization_id=org_id, is_active=True)
+        college_id = self.request.query_params.get('college', None)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id, is_active=True)
         return queryset
-    
+
+
 class KnowledgeCategoryViewSet(viewsets.ModelViewSet):
     queryset = KnowledgeCategory.objects.all()
     serializer_class = KnowledgeCategorySerializer
     
     def get_queryset(self):
         queryset = KnowledgeCategory.objects.all()
-        org_id = self.request.query_params.get('organization', None)
-        if org_id:
-            queryset = queryset.filter(organization_id=org_id)
+        college_id = self.request.query_params.get('college', None)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id)
         return queryset
     
     @action(detail=True, methods=['get'])
     def articles(self, request, pk=None):
-        """Get all articles in this category"""
         category = self.get_object()
         articles = category.articles.filter(is_published=True)
         serializer = KnowledgeArticleSerializer(articles, many=True, context={'request': request})
         return Response(serializer.data)
+
 
 class KnowledgeArticleViewSet(viewsets.ModelViewSet):
     queryset = KnowledgeArticle.objects.all()
     serializer_class = KnowledgeArticleSerializer
     
     def get_serializer_class(self):
-        """Use different serializers for public vs admin"""
         if self.request.query_params.get('public', 'false').lower() == 'true':
             return PublicKnowledgeArticleSerializer
         return KnowledgeArticleSerializer
     
     def get_queryset(self):
         queryset = KnowledgeArticle.objects.all()
-        org_id = self.request.query_params.get('organization', None)
+        college_id = self.request.query_params.get('college', None)
         
-        # Filter by organization
-        if org_id:
-            queryset = queryset.filter(organization_id=org_id)
+        if college_id:
+            queryset = queryset.filter(college_id=college_id)
         
-        # Filter by category
         category_id = self.request.query_params.get('category', None)
         if category_id:
             queryset = queryset.filter(category_id=category_id)
         
-        # Filter by published status (for public views)
         public = self.request.query_params.get('public', 'false').lower() == 'true'
         if public:
             queryset = queryset.filter(is_published=True, is_public=True)
         
-        # Search
         search = self.request.query_params.get('search', None)
         if search:
             queryset = queryset.filter(
@@ -1093,12 +1009,10 @@ class KnowledgeArticleViewSet(viewsets.ModelViewSet):
                 Q(tags__icontains=search)
             )
         
-        # Filter by tag
         tag = self.request.query_params.get('tag', None)
         if tag:
             queryset = queryset.filter(tags__icontains=tag)
         
-        # Featured only
         featured = self.request.query_params.get('featured', 'false').lower() == 'true'
         if featured:
             queryset = queryset.filter(is_featured=True)
@@ -1106,10 +1020,8 @@ class KnowledgeArticleViewSet(viewsets.ModelViewSet):
         return queryset
     
     def retrieve(self, request, *args, **kwargs):
-        """Override retrieve to increment view count"""
         instance = self.get_object()
         
-        # Increment views
         public = request.query_params.get('public', 'false').lower() == 'true'
         if public:
             instance.increment_views()
@@ -1119,27 +1031,24 @@ class KnowledgeArticleViewSet(viewsets.ModelViewSet):
     
     @action(detail=True, methods=['post'])
     def feedback(self, request, pk=None):
-        """Submit feedback for an article"""
         article = self.get_object()
         
         is_helpful = request.data.get('is_helpful')
         if is_helpful is None:
             return Response({"error": "is_helpful required"}, status=400)
         
-        # Update article counts
         if is_helpful:
             article.helpful_count += 1
         else:
             article.not_helpful_count += 1
         article.save()
         
-        # Create feedback record
         feedback = ArticleFeedback.objects.create(
             article=article,
             is_helpful=is_helpful,
             comment=request.data.get('comment', ''),
             session_id=request.data.get('session_id', ''),
-            customer_id=request.data.get('customer_id') if request.data.get('customer_id') else None
+            user_id=request.data.get('user_id') if request.data.get('user_id') else None
         )
         
         serializer = ArticleFeedbackSerializer(feedback)
@@ -1147,12 +1056,11 @@ class KnowledgeArticleViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def popular(self, request):
-        """Get most viewed articles"""
-        org_id = request.query_params.get('organization', 1)
+        college_id = request.query_params.get('college', 1)
         limit = int(request.query_params.get('limit', 10))
         
         articles = KnowledgeArticle.objects.filter(
-            organization_id=org_id,
+            college_id=college_id,
             is_published=True
         ).order_by('-views')[:limit]
         
@@ -1161,12 +1069,11 @@ class KnowledgeArticleViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def helpful(self, request):
-        """Get most helpful articles"""
-        org_id = request.query_params.get('organization', 1)
+        college_id = request.query_params.get('college', 1)
         limit = int(request.query_params.get('limit', 10))
         
         articles = KnowledgeArticle.objects.filter(
-            organization_id=org_id,
+            college_id=college_id,
             is_published=True
         ).order_by('-helpful_count')[:limit]
         
@@ -1175,17 +1082,17 @@ class KnowledgeArticleViewSet(viewsets.ModelViewSet):
     
     @action(detail=False, methods=['get'])
     def recent(self, request):
-        """Get most recent articles"""
-        org_id = request.query_params.get('organization', 1)
+        college_id = request.query_params.get('college', 1)
         limit = int(request.query_params.get('limit', 10))
         
         articles = KnowledgeArticle.objects.filter(
-            organization_id=org_id,
+            college_id=college_id,
             is_published=True
         ).order_by('-created_at')[:limit]
         
         serializer = self.get_serializer(articles, many=True)
         return Response(serializer.data)
+
 
 class ArticleFeedbackViewSet(viewsets.ModelViewSet):
     queryset = ArticleFeedback.objects.all()

@@ -9,6 +9,12 @@ function TrackTicket() {
     const [ticket, setTicket] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    
+    // Reply states
+    const [replyMessage, setReplyMessage] = useState('');
+    const [sendingReply, setSendingReply] = useState(false);
+    const [replyError, setReplyError] = useState(null);
+    const [replySuccess, setReplySuccess] = useState(false);
 
     // Check URL for ticket parameter on load
     useEffect(() => {
@@ -24,8 +30,9 @@ function TrackTicket() {
         setLoading(true);
         setError(null);
         setTicket(null);
+        setReplySuccess(false);
+        setReplyError(null);
 
-        // Remove # if user typed it
         const cleanTicketId = ticketId.replace('#', '');
 
         try {
@@ -36,6 +43,36 @@ function TrackTicket() {
             console.error('Track ticket error:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleSendReply = async () => {
+        if (!replyMessage.trim()) return;
+        
+        setSendingReply(true);
+        setReplyError(null);
+        setReplySuccess(false);
+        
+        const cleanTicketId = ticketId.replace('#', '');
+        
+        try {
+            const response = await publicApi.addUserReply(cleanTicketId, {
+                message: replyMessage,
+                email: email
+            });
+            
+            if (response.data.success) {
+                setReplySuccess(true);
+                setReplyMessage('');
+                // Refresh ticket to show new message
+                const updatedTicket = await publicApi.getTicketStatus(cleanTicketId, email);
+                setTicket(updatedTicket.data);
+            }
+        } catch (err) {
+            console.error('Error sending reply:', err);
+            setReplyError('Failed to send reply. Please try again.');
+        } finally {
+            setSendingReply(false);
         }
     };
 
@@ -142,6 +179,37 @@ function TrackTicket() {
                                         <p className="conversation-message">{conv.message}</p>
                                     </div>
                                 ))}
+                            </div>
+                        )}
+
+                        {/* Customer Reply Section */}
+                        {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
+                            <div className="customer-reply-section">
+                                <h3>Reply to Support</h3>
+                                {replySuccess && (
+                                    <div className="reply-success-message">
+                                        ✅ Your reply has been sent successfully!
+                                    </div>
+                                )}
+                                {replyError && (
+                                    <div className="reply-error-message">
+                                        ❌ {replyError}
+                                    </div>
+                                )}
+                                <textarea
+                                    value={replyMessage}
+                                    onChange={(e) => setReplyMessage(e.target.value)}
+                                    placeholder="Type your reply here..."
+                                    rows="4"
+                                    className="reply-textarea"
+                                />
+                                <button 
+                                    onClick={handleSendReply}
+                                    disabled={sendingReply || !replyMessage.trim()}
+                                    className="send-reply-btn"
+                                >
+                                    {sendingReply ? 'Sending...' : 'Send Reply'}
+                                </button>
                             </div>
                         )}
 

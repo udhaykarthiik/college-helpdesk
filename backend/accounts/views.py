@@ -17,13 +17,15 @@ class RegisterView(generics.CreateAPIView):
         user = serializer.save()
         
         # Determine role
-        try:
-            agent = Agent.objects.get(user=user)
-            role = 'agent'
-        except Agent.DoesNotExist:
-            role = 'customer'
+        if user.is_superuser:
+            role = 'super_admin'
+        else:
+            try:
+                agent = Agent.objects.get(user=user)
+                role = 'agent'
+            except Agent.DoesNotExist:
+                role = 'student'
         
-        # Generate tokens
         refresh = RefreshToken.for_user(user)
         
         return Response({
@@ -50,9 +52,7 @@ class LoginView(generics.GenericAPIView):
         if not username_or_email or not password:
             return Response({'error': 'Username/email and password required'}, status=400)
         
-        # Try to find user by username or email
         try:
-            # Check if input is email (contains @)
             if '@' in username_or_email:
                 user = User.objects.get(email=username_or_email)
             else:
@@ -60,19 +60,20 @@ class LoginView(generics.GenericAPIView):
         except User.DoesNotExist:
             return Response({'error': 'Invalid credentials'}, status=401)
         
-        # Verify password
         if not user.check_password(password):
             return Response({'error': 'Invalid credentials'}, status=401)
         
-        # Generate tokens
         refresh = RefreshToken.for_user(user)
         
-        # Check role
-        try:
-            agent = Agent.objects.get(user=user)
-            role = 'agent'
-        except Agent.DoesNotExist:
-            role = 'customer'
+        # Determine role - check for super admin first
+        if user.is_superuser:
+            role = 'super_admin'
+        else:
+            try:
+                agent = Agent.objects.get(user=user)
+                role = 'agent'
+            except Agent.DoesNotExist:
+                role = 'student'
         
         return Response({
             'user': {
@@ -81,7 +82,7 @@ class LoginView(generics.GenericAPIView):
                 'email': user.email,
                 'first_name': user.first_name,
                 'last_name': user.last_name,
-                'role': role
+                'role': role  # Make sure this is included
             },
             'refresh': str(refresh),
             'access': str(refresh.access_token),

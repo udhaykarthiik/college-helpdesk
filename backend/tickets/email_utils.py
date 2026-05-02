@@ -1,41 +1,194 @@
+# import re
+# from django.core.mail import send_mail
+# from django.conf import settings
+# from django.utils import timezone
+# from .models import Ticket, Conversation, UserProfile
+
+# def send_ticket_confirmation(ticket):
+#     """Send confirmation email when ticket is created"""
+    
+#     subject = f"Ticket #{ticket.id} Received - College Helpdesk"
+    
+#     message = f"""
+# Dear {ticket.raised_by.user.get_full_name() or ticket.raised_by.user.username},
+
+# Thank you for contacting the College Helpdesk. Your ticket has been created successfully.
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TICKET DETAILS
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# Ticket ID: #{ticket.id}
+# Subject: {ticket.title}
+# Category: {ticket.category.display_name}
+# Status: {ticket.status}
+# Created: {ticket.created_at.strftime('%B %d, %Y at %I:%M %p')}
+
+# Your Message:
+# {ticket.description}
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# IMPORTANT: To reply to this ticket, simply REPLY to this email. Your reply will be automatically added to the ticket.
+
+# We will respond within 24 hours.
+
+# Thanks,
+# College Helpdesk Support Team
+#     """
+    
+#     from_email = settings.DEFAULT_FROM_EMAIL
+#     recipient_list = [ticket.raised_by.user.email]
+    
+#     send_mail(
+#         subject,
+#         message,
+#         from_email,
+#         recipient_list,
+#         fail_silently=False,
+#     )
+    
+#     print(f"📧 Confirmation email sent for ticket #{ticket.id} to {ticket.raised_by.user.email}")
+
+# def send_reply_notification(ticket, conversation):
+#     """Send email notification when agent replies to ticket"""
+    
+#     subject = f"Re: Ticket #{ticket.id} - College Helpdesk"
+    
+#     message = f"""
+# Dear {ticket.raised_by.user.get_full_name() or ticket.raised_by.user.username},
+
+# An agent has responded to your ticket.
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# TICKET #{ticket.id}: {ticket.title}
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# AGENT RESPONSE:
+# {conversation.message}
+
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+# To continue this conversation, simply REPLY to this email.
+
+# Thanks,
+# College Helpdesk Support Team
+#     """
+    
+#     from_email = settings.DEFAULT_FROM_EMAIL
+#     recipient_list = [ticket.raised_by.user.email]
+    
+#     send_mail(
+#         subject,
+#         message,
+#         from_email,
+#         recipient_list,
+#         fail_silently=False,
+#     )
+    
+#     print(f"📧 Reply notification sent for ticket #{ticket.id} to {ticket.raised_by.user.email}")
+
+# def parse_incoming_email(email_subject, email_body, from_email):
+#     """
+#     Process incoming email replies
+#     Returns: (ticket, conversation) if successful, (None, None) if not
+#     """
+    
+#     # Step 1: Extract ticket ID from subject
+#     match = re.search(r'Ticket #(\d+)', email_subject)
+    
+#     if not match:
+#         print(f"❌ Could not find ticket ID in subject: {email_subject}")
+#         return None, None
+    
+#     ticket_id = match.group(1)
+    
+#     # Step 2: Find the ticket
+#     try:
+#         ticket = Ticket.objects.get(id=ticket_id)
+#     except Ticket.DoesNotExist:
+#         print(f"❌ Ticket #{ticket_id} not found")
+#         return None, None
+    
+#     # Step 3: Verify sender is the user who raised the ticket
+#     if from_email != ticket.raised_by.user.email:
+#         print(f"❌ Email from {from_email} does not match ticket user {ticket.raised_by.user.email}")
+#         return None, None
+    
+#     # Step 4: Create conversation from email
+#     conversation = Conversation.objects.create(
+#         ticket=ticket,
+#         sender_type='user',
+#         message=email_body.strip(),
+#         is_internal_note=False
+#     )
+    
+#     print(f"📨 Incoming email processed: Ticket #{ticket.id} - New conversation #{conversation.id}")
+    
+#     return ticket, conversation
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import re
 from django.core.mail import send_mail
 from django.conf import settings
 from django.utils import timezone
-from .models import Ticket, Conversation, Customer
+from .models import Ticket, Conversation, UserProfile
 
 def send_ticket_confirmation(ticket):
     """Send confirmation email when ticket is created"""
     
-    subject = f"Ticket #{ticket.id} Received - QuickCart Support"
+    subject = f"Ticket #{ticket.id} Received - ABC Institution Helpdesk"
+    
+    # Get user name
+    if ticket.raised_by and ticket.raised_by.user:
+        user_name = ticket.raised_by.user.get_full_name() or ticket.raised_by.user.username
+    else:
+        user_name = "Valued User"
     
     message = f"""
-Dear {ticket.customer.name},
+Dear {user_name},
 
-Thank you for contacting QuickCart Support. Your ticket has been created successfully.
+Thank you for contacting ABC Institution Helpdesk. Your ticket has been created successfully.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TICKET DETAILS
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Ticket ID: #{ticket.id}
 Subject: {ticket.title}
+Category: {ticket.category.display_name}
 Status: {ticket.status}
 Created: {ticket.created_at.strftime('%B %d, %Y at %I:%M %p')}
 
 Your Message:
 {ticket.description}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-IMPORTANT: To reply to this ticket, simply REPLY to this email. Your reply will be automatically added to the ticket.
+To reply to this ticket, simply reply to this email. Your reply will be automatically added to the ticket.
 
-We will respond within 24 hours.
+Our team will respond within 24 hours.
 
-Thanks,
-QuickCart Support Team
-    """
+Thank you,
+ABC Institution Helpdesk Support Team
+"""
     
     from_email = settings.DEFAULT_FROM_EMAIL
-    recipient_list = [ticket.customer.email]
+    recipient_list = [ticket.raised_by.user.email]
     
     send_mail(
         subject,
@@ -45,35 +198,37 @@ QuickCart Support Team
         fail_silently=False,
     )
     
-    print(f"📧 Confirmation email sent for ticket #{ticket.id} to {ticket.customer.email}")
+    print(f"📧 Confirmation email sent for ticket #{ticket.id} to {ticket.raised_by.user.email}")
 
 def send_reply_notification(ticket, conversation):
     """Send email notification when agent replies to ticket"""
     
-    subject = f"Re: Ticket #{ticket.id} - QuickCart Support"
+    subject = f"Re: Ticket #{ticket.id} - ABC Institution Helpdesk"
+    
+    # Get user name
+    if ticket.raised_by and ticket.raised_by.user:
+        user_name = ticket.raised_by.user.get_full_name() or ticket.raised_by.user.username
+    else:
+        user_name = "Valued User"
     
     message = f"""
-Dear {ticket.customer.name},
+Dear {user_name},
 
 An agent has responded to your ticket.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-TICKET #{ticket.id}: {ticket.title}
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Ticket #{ticket.id}: {ticket.title}
 
-AGENT RESPONSE:
+Agent Response:
 {conversation.message}
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+To continue this conversation, simply reply to this email.
 
-To continue this conversation, simply REPLY to this email.
-
-Thanks,
-QuickCart Support Team
-    """
+Thank you,
+ABC Institution Helpdesk Support Team
+"""
     
     from_email = settings.DEFAULT_FROM_EMAIL
-    recipient_list = [ticket.customer.email]
+    recipient_list = [ticket.raised_by.user.email]
     
     send_mail(
         subject,
@@ -83,16 +238,12 @@ QuickCart Support Team
         fail_silently=False,
     )
     
-    print(f"📧 Reply notification sent for ticket #{ticket.id} to {ticket.customer.email}")
+    print(f"📧 Reply notification sent for ticket #{ticket.id} to {ticket.raised_by.user.email}")
 
 def parse_incoming_email(email_subject, email_body, from_email):
-    """
-    Process incoming email replies
-    Returns: (ticket, conversation) if successful, (None, None) if not
-    """
+    """Process incoming email replies"""
     
-    # Step 1: Extract ticket ID from subject
-    # Subject format: "Re: Ticket #123 - QuickCart Support"
+    # Extract ticket ID from subject
     match = re.search(r'Ticket #(\d+)', email_subject)
     
     if not match:
@@ -101,27 +252,19 @@ def parse_incoming_email(email_subject, email_body, from_email):
     
     ticket_id = match.group(1)
     
-    # Step 2: Find the ticket
     try:
         ticket = Ticket.objects.get(id=ticket_id)
     except Ticket.DoesNotExist:
         print(f"❌ Ticket #{ticket_id} not found")
         return None, None
     
-    # Step 3: Verify sender is the customer
-    try:
-        customer = Customer.objects.get(email=from_email)
-        if customer.id != ticket.customer.id:
-            print(f"❌ Email from {from_email} does not match ticket customer {ticket.customer.email}")
-            return None, None
-    except Customer.DoesNotExist:
-        print(f"❌ Customer with email {from_email} not found")
+    if from_email != ticket.raised_by.user.email:
+        print(f"❌ Email from {from_email} does not match ticket user {ticket.raised_by.user.email}")
         return None, None
     
-    # Step 4: Create conversation from email
     conversation = Conversation.objects.create(
         ticket=ticket,
-        sender_type='customer',
+        sender_type='user',
         message=email_body.strip(),
         is_internal_note=False
     )

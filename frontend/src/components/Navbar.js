@@ -13,11 +13,21 @@ function Navbar() {
         navigate('/');
     };
 
+    const getDashboardLink = () => {
+        if (user?.role === 'super_admin') {
+            return '/super-admin/dashboard';
+        } else if (user?.role === 'agent') {
+            return '/agent/dashboard';
+        } else {
+            return '/my-tickets';
+        }
+    };
+
     return (
         <nav className="navbar">
             <div className="nav-container">
                 <Link to="/" className="nav-logo">
-                    <span className="logo-text">QuickCart</span>
+                    <span className="logo-text">ABC Institution</span>
                     <span className="logo-badge">Helpdesk</span>
                 </Link>
 
@@ -26,7 +36,9 @@ function Navbar() {
                         <li><Link to="/" className="nav-link" onClick={() => setMenuOpen(false)}>Home</Link></li>
                         <li><Link to="/kb" className="nav-link" onClick={() => setMenuOpen(false)}>Knowledge Base</Link></li>
                         <li><Link to="/track" className="nav-link" onClick={() => setMenuOpen(false)}>Track Ticket</Link></li>
-                        <li><Link to="/ticket/new" className="nav-link" onClick={() => setMenuOpen(false)}>Submit Ticket</Link></li>
+                        {user?.role !== 'super_admin' && (
+                            <li><Link to="/ticket/new" className="nav-link" onClick={() => setMenuOpen(false)}>Submit Ticket</Link></li>
+                        )}
                     </ul>
 
                     <div className="nav-auth">
@@ -40,11 +52,9 @@ function Navbar() {
                                 </button>
                                 {menuOpen && (
                                     <div className="dropdown-menu">
-                                        {user?.role === 'agent' ? (
-                                            <Link to="/agent/dashboard" className="dropdown-item" onClick={() => setMenuOpen(false)}>Agent Dashboard</Link>
-                                        ) : (
-                                            <Link to="/my-tickets" className="dropdown-item" onClick={() => setMenuOpen(false)}>My Tickets</Link>
-                                        )}
+                                        <Link to={getDashboardLink()} className="dropdown-item" onClick={() => setMenuOpen(false)}>
+                                            Dashboard
+                                        </Link>
                                         <div className="dropdown-divider"></div>
                                         <button onClick={handleLogout} className="dropdown-item logout-btn">
                                             Logout

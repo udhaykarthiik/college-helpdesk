@@ -191,3 +191,47 @@
     font-size: 1.5rem;
   }
 }
+
+/* Password toggle styles */
+.password-wrapper {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+.password-wrapper input {
+    flex: 1;
+    padding-right: 70px;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 10px;
+    background: none;
+    border: none;
+    color: var(--primary-blue);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    padding: 5px 10px;
+}
+
+.password-toggle:hover {
+    color: var(--primary-navy);
+}
+
+.field-hint {
+    display: block;
+    color: var(--text-muted);
+    font-size: 12px;
+    margin-top: 5px;
+}
+
+.role-select {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    font-size: 14px;
+    background: white;
+}

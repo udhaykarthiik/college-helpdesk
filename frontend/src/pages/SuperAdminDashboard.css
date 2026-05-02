@@ -1,0 +1,343 @@
+/* Super Admin Dashboard Styles - ABC Institution Theme */
+.super-admin-dashboard {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: var(--spacing-6);
+}
+
+/* Header */
+.dashboard-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--spacing-8);
+    flex-wrap: wrap;
+    gap: var(--spacing-4);
+    background: white;
+    padding: 20px 30px;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.dashboard-header h1 {
+    font-size: 1.875rem;
+    color: var(--text-dark);
+    margin: 0;
+}
+
+.dashboard-header p {
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* Logout Button */
+.logout-btn {
+    background-color: #dc2626;
+    color: white;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.logout-btn:hover {
+    background-color: #b91c1c;
+    transform: translateY(-1px);
+}
+
+/* Stats Grid */
+.stats-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: var(--spacing-4);
+    margin-bottom: var(--spacing-8);
+}
+
+.stat-card {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-4);
+    text-align: center;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-light);
+}
+
+.stat-card h3 {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-bottom: var(--spacing-2);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.stat-number {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--primary-navy);
+}
+
+/* Admin Actions */
+.admin-actions {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-5);
+    margin-bottom: var(--spacing-8);
+    border: 1px solid var(--border-light);
+}
+
+.admin-actions h2 {
+    font-size: 1.25rem;
+    margin-bottom: var(--spacing-4);
+    color: var(--text-dark);
+}
+
+.action-buttons {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--spacing-4);
+}
+
+.action-btn {
+    padding: var(--spacing-3);
+    background: var(--primary-navy);
+    color: white;
+    border: none;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+}
+
+.action-btn:hover {
+    background: var(--primary-blue);
+    transform: translateY(-2px);
+}
+
+/* Users Section */
+.users-section {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-5);
+    margin-bottom: var(--spacing-8);
+    border: 1px solid var(--border-light);
+}
+
+.users-section h2 {
+    font-size: 1.25rem;
+    margin-bottom: var(--spacing-4);
+    color: var(--text-dark);
+}
+
+.users-table-container {
+    overflow-x: auto;
+}
+
+.users-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.users-table th {
+    text-align: left;
+    padding: var(--spacing-3);
+    background: var(--bg-light);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.users-table td {
+    padding: var(--spacing-3);
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.875rem;
+}
+
+.role-select {
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border-light);
+    background: white;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+
+.role-select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.delete-btn {
+    background-color: #dc2626;
+    color: white;
+    border: none;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    transition: all 0.2s ease;
+}
+
+.delete-btn:hover {
+    background-color: #b91c1c;
+    transform: translateY(-1px);
+}
+
+.delete-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.super-admin-badge {
+    background: var(--primary-navy);
+    color: white;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    display: inline-block;
+}
+
+/* Recent Tickets */
+.recent-tickets {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-5);
+    border: 1px solid var(--border-light);
+}
+
+.recent-tickets h2 {
+    font-size: 1.25rem;
+    margin-bottom: var(--spacing-4);
+}
+
+.tickets-table-container {
+    overflow-x: auto;
+}
+
+.tickets-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.tickets-table th {
+    text-align: left;
+    padding: var(--spacing-3);
+    background: var(--bg-light);
+    color: var(--text-muted);
+    font-weight: 600;
+    font-size: 0.75rem;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.tickets-table td {
+    padding: var(--spacing-3);
+    border-bottom: 1px solid var(--border-light);
+    font-size: 0.875rem;
+}
+
+.no-data {
+    text-align: center;
+    padding: var(--spacing-8);
+    color: var(--text-muted);
+}
+
+/* Status Badges */
+.status-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.status-new { background: var(--info-blue); color: white; }
+.status-open { background: var(--success-green); color: white; }
+.status-pending { background: var(--warning-orange); color: white; }
+.status-resolved { background: var(--text-muted); color: white; }
+.status-closed { background: var(--text-light); color: white; }
+
+/* Priority Badges */
+.priority-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.priority-low { background: #d5f5e3; color: #1e8449; }
+.priority-medium { background: #fdebd0; color: #e67e22; }
+.priority-high { background: #fadbd8; color: #c0392b; }
+.priority-urgent { background: var(--error-red); color: white; }
+
+/* Loading */
+.loading {
+    text-align: center;
+    padding: var(--spacing-12);
+    color: var(--text-muted);
+    font-size: 0.875rem;
+}
+
+/* Error Message */
+.error-message {
+    text-align: center;
+    padding: var(--spacing-8);
+    color: var(--error-red);
+    background: #fee2e2;
+    border-radius: var(--radius-lg);
+    margin: var(--spacing-6);
+    font-size: 0.875rem;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .stats-grid {
+        grid-template-columns: repeat(4, 1fr);
+    }
+}
+
+@media (max-width: 1024px) {
+    .action-buttons {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}
+
+@media (max-width: 768px) {
+    .super-admin-dashboard {
+        padding: var(--spacing-4);
+    }
+    
+    .dashboard-header {
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .action-buttons {
+        grid-template-columns: 1fr;
+    }
+    
+    .users-table th,
+    .users-table td,
+    .tickets-table th,
+    .tickets-table td {
+        padding: var(--spacing-2);
+        font-size: 0.75rem;
+    }
+    
+    .role-select {
+        min-width: 70px;
+    }
+    
+    .delete-btn {
+        padding: 2px 8px;
+    }
+}

@@ -25,17 +25,33 @@ function MyTickets() {
         }
         
         setUser(userData);
-        fetchMyTickets();
+        fetchMyTickets(userData);
     }, [navigate]);
 
     const fetchMyTickets = async () => {
         try {
             setLoading(true);
-            // Fetch all tickets and filter by customer email
+            
+            // Get logged-in user from localStorage
+            const userStr = localStorage.getItem('user');
+            const userData = JSON.parse(userStr);
+            const userEmail = userData?.email;
+            
+            console.log("Logged in user email:", userEmail);
+            
+            // Fetch all tickets
             const response = await agentApi.getTickets();
-            const userEmail = user?.email;
-            const myTickets = response.data.filter(t => t.customer_email === userEmail);
+            console.log("All tickets:", response.data);
+            
+            // Filter tickets by email
+            const myTickets = response.data.filter(ticket => {
+                // Try to match by email
+                return ticket.raised_by_email === userEmail;
+            });
+            
+            console.log("My tickets:", myTickets);
             setTickets(myTickets);
+            
         } catch (err) {
             console.error('Error fetching tickets:', err);
         } finally {

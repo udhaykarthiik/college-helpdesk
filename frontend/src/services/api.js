@@ -64,18 +64,26 @@ export const publicApi = {
     submitFeedback: (articleId, data) => api.post(`/knowledge-articles/${articleId}/feedback/`, data),
     getCategories: () => api.get('/knowledge-categories/'),
     getTicketStatus: (ticketId, email) => api.get(`/tickets/${ticketId}/status/`, { params: { email } }),
+    getTicketCategories: () => api.get('/ticket-categories/'),
 
-    
     // Auth
     register: (data) => api.post('/auth/register/', data),
     login: (data) => api.post('/auth/login/', data),
     logout: () => api.post('/auth/logout/'),
     getCurrentUser: () => api.get('/auth/user/'),
+    
+    // College-specific endpoints
+    getDepartments: () => api.get('/departments/'),
+    getColleges: () => api.get('/colleges/'),
+    
+    // ========== CUSTOMER REPLY ==========
+    addUserReply: (ticketId, data) => api.post(`/tickets/${ticketId}/add_user_reply/`, data),
 };
 
 // Agent API (requires auth)
 export const agentApi = {
     // Tickets
+    createTicket: (data) => api.post('/tickets/', data),
     getTickets: (params) => api.get('/tickets/', { params }),
     getTicket: (id) => api.get(`/tickets/${id}/`),
     updateTicket: (id, data) => api.patch(`/tickets/${id}/`, data),
@@ -98,21 +106,15 @@ export const agentApi = {
     getCannedCategories: () => api.get('/canned-categories/'),
     renderCannedResponse: (data) => api.post('/canned-responses/render/', data),
     
-    // Customers
-    getCustomers: () => api.get('/customers/'),
-    getCustomer: (id) => api.get(`/customers/${id}/`),
-    getCustomerTickets: (id) => api.get(`/customers/${id}/tickets/`),
-    
-    // Knowledge Base (admin)
-    createArticle: (data) => api.post('/knowledge-articles/', data),
-    updateArticle: (id, data) => api.patch(`/knowledge-articles/${id}/`, data),
-    deleteArticle: (id) => api.delete(`/knowledge-articles/${id}/`),
-    createCategory: (data) => api.post('/knowledge-categories/', data),
+    // College-specific
+    getUsers: () => api.get('/user-profiles/'),
+    getUser: (id) => api.get(`/user-profiles/${id}/`),
+    getUserTickets: (id) => api.get(`/user-profiles/${id}/tickets/`),
     
     // Mentions
     getMentions: () => api.get('/tickets/mentioned_me/'),
     
-    // ========== ATTACHMENTS ==========
+    // Attachments
     addAttachment: (ticketId, file, uploadedBy) => {
         const formData = new FormData();
         formData.append('file', file);
@@ -122,6 +124,26 @@ export const agentApi = {
         });
     },
     getAttachments: (ticketId) => api.get(`/tickets/${ticketId}/attachments/`),
+    
+    // AI Features
+    aiSuggestResponse: (ticketId) => api.post(`/tickets/${ticketId}/ai_suggest_response/`, {}),
+    
+    // ========== KNOWLEDGE BASE (Admin) ==========
+    getKnowledgeArticles: (params) => api.get('/knowledge-articles/', { params }),
+    getKnowledgeArticle: (id) => api.get(`/knowledge-articles/${id}/`),
+    createKnowledgeArticle: (data) => api.post('/knowledge-articles/', data),
+    updateKnowledgeArticle: (id, data) => api.patch(`/knowledge-articles/${id}/`, data),
+    deleteKnowledgeArticle: (id) => api.delete(`/knowledge-articles/${id}/`),
+    
+    getKnowledgeCategories: () => api.get('/knowledge-categories/'),
+    createKnowledgeCategory: (data) => api.post('/knowledge-categories/', data),
+    updateKnowledgeCategory: (id, data) => api.patch(`/knowledge-categories/${id}/`, data),
+    deleteKnowledgeCategory: (id) => api.delete(`/knowledge-categories/${id}/`),
+    
+    // ========== SUPER ADMIN FEATURES ==========
+    getAdminStats: () => api.get('/admin-stats/'),
+    updateUserRole: (userId, role) => api.patch(`/admin-stats/${userId}/update_role/`, { role }),
+    deleteUser: (userId) => api.delete(`/admin-stats/${userId}/delete_user/`),
 };
 
 export default api;

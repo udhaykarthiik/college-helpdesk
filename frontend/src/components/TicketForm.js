@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { publicApi } from '../services/api';
+import { publicApi, agentApi } from '../services/api';
 import './TicketForm.css';
 
 function TicketForm() {
     const navigate = useNavigate();
+    const [categories, setCategories] = useState([]);
     const [formData, setFormData] = useState({
         title: '',
         description: '',
         customer_name: '',
         customer_email: '',
-        category: 'general',
+        category: '',
         priority: 'medium'
     });
 
@@ -18,6 +19,23 @@ function TicketForm() {
     const [success, setSuccess] = useState(null);
     const [error, setError] = useState(null);
     const [user, setUser] = useState(null);
+
+    // Fetch categories
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const response = await publicApi.getTicketCategories();
+                setCategories(response.data);
+                // Set default category
+                if (response.data.length > 0) {
+                    setFormData(prev => ({ ...prev, category: response.data[0].id }));
+                }
+            } catch (err) {
+                console.error('Error fetching categories:', err);
+            }
+        };
+        fetchCategories();
+    }, []);
 
     // Check if user is logged in
     useEffect(() => {
@@ -47,27 +65,54 @@ function TicketForm() {
         setSuccess(null);
 
         try {
-            const response = await publicApi.createTicket(formData);
-            setSuccess({
-                ticketId: response.data.ticket_id,
-                message: response.data.message
-            });
+            let response;
+            
+            // If user is logged in, use authenticated endpoint
+            if (user) {
+                response = await agentApi.createTicket({
+                    title: formData.title,
+                    description: formData.description,
+                    category: parseInt(formData.category),
+                    priority: formData.priority,
+                    channel: 'web'
+                });
+                
+                setSuccess({
+                    ticketId: response.data.id,
+                    message: 'Your ticket has been created. We will respond within 24 hours.'
+                });
+            } else {
+                // For guest users, use public endpoint
+                response = await publicApi.createTicket({
+                    title: formData.title,
+                    description: formData.description,
+                    category: parseInt(formData.category),
+                    priority: formData.priority,
+                    email: formData.customer_email,
+                    name: formData.customer_name
+                });
+                
+                setSuccess({
+                    ticketId: response.data.ticket_id,
+                    message: response.data.message
+                });
+            }
             
             // Clear form
-            setFormData({
+            setFormData(prev => ({
                 title: '',
                 description: '',
                 customer_name: user ? `${user.first_name} ${user.last_name}`.trim() || user.username : '',
                 customer_email: user ? user.email : '',
-                category: 'general',
+                category: categories.length > 0 ? categories[0].id : '',
                 priority: 'medium'
-            });
+            }));
 
-            // Scroll to top
             window.scrollTo(0, 0);
 
         } catch (err) {
-            setError(err.response?.data?.error || 'Something went wrong');
+            console.error('Error:', err.response?.data);
+            setError(err.response?.data?.error || err.response?.data?.message || 'Something went wrong');
         } finally {
             setLoading(false);
         }
@@ -81,7 +126,7 @@ function TicketForm() {
         <div className="ticket-form-container">
             <div className="form-header">
                 <h1>Submit a Support Ticket</h1>
-                <p>We'll get back to you within 24 hours</p>
+                <p>Submit your issue and we'll get back to you within 24 hours</p>
             </div>
             
             {success && (
@@ -135,7 +180,7 @@ function TicketForm() {
                                             value={formData.customer_email}
                                             onChange={handleChange}
                                             required
-                                            placeholder="john@example.com"
+                                            placeholder="john@abc.edu.in"
                                             disabled={loading}
                                         />
                                     </div>
@@ -150,18 +195,12 @@ function TicketForm() {
                         <div className="form-row">
                             <div className="form-group">
                                 <label>Category</label>
-                                <select
-                                    name="category"
-                                    value={formData.category}
-                                    onChange={handleChange}
-                                    disabled={loading}
-                                >
-                                    <option value="general">General Question</option>
-                                    <option value="billing">Billing Issue</option>
-                                    <option value="technical">Technical Problem</option>
-                                    <option value="account">Account Issue</option>
-                                    <option value="order">Order Status</option>
-                                    <option value="product">Product Question</option>
+                                <select name="category" value={formData.category} onChange={handleChange} disabled={loading}>
+                                    {categories.map(cat => (
+                                        <option key={cat.id} value={cat.id}>
+                                            {cat.display_name}
+                                        </option>
+                                    ))}
                                 </select>
                             </div>
 

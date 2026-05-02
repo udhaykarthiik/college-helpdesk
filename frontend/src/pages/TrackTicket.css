@@ -1,4 +1,4 @@
-/* Track Ticket Styles - HappyFox Theme */
+/* Track Ticket Styles - ABC Institution Theme */
 .track-ticket-container {
   max-width: 800px;
   margin: 0 auto;
@@ -276,6 +276,82 @@
   font-size: 0.875rem;
 }
 
+/* ========== CUSTOMER REPLY SECTION ========== */
+.customer-reply-section {
+  margin-top: 25px;
+  padding-top: 20px;
+  border-top: 2px solid var(--border-light);
+}
+
+.customer-reply-section h3 {
+  margin-bottom: 15px;
+  font-size: 16px;
+  color: var(--text-dark);
+  font-weight: 600;
+}
+
+.reply-textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  font-size: 14px;
+  resize: vertical;
+  font-family: inherit;
+  transition: all 0.2s ease;
+}
+
+.reply-textarea:focus {
+  outline: none;
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(44, 110, 158, 0.1);
+}
+
+.send-reply-btn {
+  margin-top: 10px;
+  background: var(--primary-navy);
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.2s ease;
+}
+
+.send-reply-btn:hover:not(:disabled) {
+  background: var(--primary-blue);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
+.send-reply-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.reply-success-message {
+  background: #d4edda;
+  color: #155724;
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  border: 1px solid #c3e6cb;
+}
+
+.reply-error-message {
+  background: #f8d7da;
+  color: #721c24;
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  font-size: 14px;
+  border: 1px solid #f5c6cb;
+}
+/* ========================================== */
+
 /* Ticket Actions */
 .ticket-actions {
   display: flex;
@@ -364,5 +440,14 @@
   
   .action-btn {
     text-align: center;
+  }
+  
+  .customer-reply-section {
+    margin-top: 20px;
+    padding-top: 15px;
+  }
+  
+  .send-reply-btn {
+    width: 100%;
   }
 }

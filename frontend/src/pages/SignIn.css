@@ -1,4 +1,4 @@
-/* Sign In Page Styles - HappyFox Theme */
+/* Sign In Page Styles - ABC Institution Theme */
 .signin-container {
   min-height: calc(100vh - 200px);
   display: flex;
@@ -57,6 +57,7 @@
   font-size: 0.875rem;
   transition: all 0.2s ease;
   background: var(--bg-white);
+  width: 100%;
 }
 
 .form-group input:focus {
@@ -68,6 +69,34 @@
 .form-group input:disabled {
   background: var(--bg-light);
   cursor: not-allowed;
+}
+
+/* Password toggle styles */
+.password-wrapper {
+  display: flex;
+  align-items: center;
+  position: relative;
+}
+
+.password-wrapper input {
+  flex: 1;
+  padding-right: 70px;
+}
+
+.password-toggle {
+  position: absolute;
+  right: 10px;
+  background: none;
+  border: none;
+  color: var(--primary-blue);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  padding: 5px 10px;
+}
+
+.password-toggle:hover {
+  color: var(--primary-navy);
 }
 
 /* Form Options */
@@ -116,6 +145,7 @@
   cursor: pointer;
   transition: all 0.2s ease;
   margin-top: var(--spacing-2);
+  width: 100%;
 }
 
 .signin-btn:hover {
@@ -147,31 +177,6 @@
 
 .signup-link a:hover {
   text-decoration: underline;
-}
-
-/* Demo Credentials */
-.demo-credentials {
-  margin-top: var(--spacing-6);
-  padding: var(--spacing-4);
-  background: var(--bg-light);
-  border-radius: var(--radius-md);
-  border: 1px dashed var(--primary-blue);
-}
-
-.demo-title {
-  font-weight: 600;
-  color: var(--primary-blue);
-  margin-bottom: var(--spacing-2);
-  text-align: center;
-  font-size: 0.75rem;
-}
-
-.demo-credentials p {
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  margin: var(--spacing-1) 0;
-  font-family: monospace;
-  text-align: center;
 }
 
 /* Messages */
@@ -212,5 +217,15 @@
   
   .signin-card h2 {
     font-size: 1.5rem;
+  }
+  
+  .password-wrapper input {
+    padding-right: 60px;
+  }
+  
+  .password-toggle {
+    right: 5px;
+    font-size: 12px;
+    padding: 5px 8px;
   }
 }

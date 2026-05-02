@@ -1,24 +1,70 @@
 from rest_framework import serializers
-from .models import Organization, Customer, Agent, Ticket, Conversation, CannedCategory, CannedResponse, RoutingRule, TicketAttachment, KnowledgeCategory, KnowledgeArticle, ArticleFeedback
+from django.contrib.auth.models import User
+from .models import (
+    College, Department, UserProfile, TicketCategory, Agent, AgentDepartment,
+    Ticket, Conversation, CannedCategory, CannedResponse, RoutingRule,
+    TicketAttachment, KnowledgeCategory, KnowledgeArticle, ArticleFeedback
+)
 
-class OrganizationSerializer(serializers.ModelSerializer):
+# ========== COLLEGE & DEPARTMENT SERIALIZERS ==========
+
+class CollegeSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Organization
+        model = College
         fields = '__all__'
 
-class CustomerSerializer(serializers.ModelSerializer):
+class DepartmentSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Customer
-        fields = ['id', 'name', 'email', 'phone', 'organization', 'total_spent', 
-                  'is_vip', 'vip_threshold', 'created_at']
+        model = Department
+        fields = '__all__'
+
+# ========== USER PROFILE SERIALIZERS ==========
+
+class UserProfileSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='user.username', read_only=True)
+    email = serializers.CharField(source='user.email', read_only=True)
+    first_name = serializers.CharField(source='user.first_name', read_only=True)
+    last_name = serializers.CharField(source='user.last_name', read_only=True)
+    
+    class Meta:
+        model = UserProfile
+        fields = [
+            'id', 'username', 'email', 'first_name', 'last_name',
+            'user_type', 'college', 'roll_number', 'employee_id',
+            'student_type', 'department', 'year', 'hostel_name',
+            'bus_route', 'designation', 'is_verified', 'created_at'
+        ]
+
+# ========== TICKET CATEGORY SERIALIZERS ==========
+
+class TicketCategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TicketCategory
+        fields = '__all__'
+
+# ========== AGENT SERIALIZERS ==========
 
 class AgentSerializer(serializers.ModelSerializer):
     username = serializers.CharField(source='user.username', read_only=True)
     email = serializers.CharField(source='user.email', read_only=True)
+    categories_list = serializers.SerializerMethodField()
     
     class Meta:
         model = Agent
-        fields = ['id', 'username', 'email', 'department', 'is_senior', 'organization', 'created_at']
+        fields = ['id', 'username', 'email', 'college', 'is_senior', 'categories_list', 'created_at']
+    
+    def get_categories_list(self, obj):
+        return [cat.category.display_name for cat in obj.assigned_categories.all()]
+
+class AgentDepartmentSerializer(serializers.ModelSerializer):
+    agent_name = serializers.CharField(source='agent.user.username', read_only=True)
+    category_name = serializers.CharField(source='category.display_name', read_only=True)
+    
+    class Meta:
+        model = AgentDepartment
+        fields = ['id', 'agent', 'agent_name', 'category', 'category_name', 'is_primary']
+
+# ========== ATTACHMENT SERIALIZERS ==========
 
 class TicketAttachmentSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
@@ -36,7 +82,6 @@ class TicketAttachmentSerializer(serializers.ModelSerializer):
         return None
     
     def get_file_size_display(self, obj):
-        """Convert bytes to human readable format"""
         size = obj.file_size
         if size < 1024:
             return f"{size} B"
@@ -45,119 +90,140 @@ class TicketAttachmentSerializer(serializers.ModelSerializer):
         else:
             return f"{size/(1024*1024):.1f} MB"
 
+# ========== CONVERSATION SERIALIZERS ==========
+
 class ConversationSerializer(serializers.ModelSerializer):
     sender_name = serializers.SerializerMethodField()
-    mentioned_agents = serializers.SerializerMethodField()
-    attachments = TicketAttachmentSerializer(many=True, read_only=True, source='ticket.attachments')
     
     class Meta:
         model = Conversation
-        fields = [
-            'id', 'ticket', 'sender_type', 'sender_name', 'message', 
-            'is_internal_note', 'mentions', 'mentioned_agents', 'attachments', 'created_at'
-        ]
-        read_only_fields = ['mentions']
+        fields = ['id', 'ticket', 'sender_type', 'sender_name', 'message', 'is_internal_note', 'created_at']
     
     def get_sender_name(self, obj):
         if obj.sender_name:
             return obj.sender_name
-        if obj.sender_type == 'customer':
-            return obj.ticket.customer.name
+        if obj.sender_type == 'user':
+            return obj.ticket.raised_by.user.get_full_name() or obj.ticket.raised_by.user.username
         else:
-            return obj.ticket.assigned_to.user.username if obj.ticket.assigned_to else 'Unknown Agent'
-    
-    def get_mentioned_agents(self, obj):
-        """Return list of mentioned agents with details"""
-        if obj.mentions.exists():
-            return [
-                {
-                    'id': agent.id,
-                    'username': agent.user.username,
-                    'email': agent.user.email,
-                    'department': agent.department
-                }
-                for agent in obj.mentions.all()
-            ]
-        return []
+            return obj.ticket.assigned_to.user.username if obj.ticket.assigned_to else 'Support Agent'
+
+# ========== TICKET SERIALIZERS ==========
 
 class TicketSerializer(serializers.ModelSerializer):
-    customer_name = serializers.CharField(source='customer.name', read_only=True)
-    customer_email = serializers.CharField(source='customer.email', read_only=True)
-    customer_is_vip = serializers.BooleanField(source='customer.is_vip', read_only=True)
+    raised_by_name = serializers.SerializerMethodField()
+    raised_by_email = serializers.SerializerMethodField()
+    category_name = serializers.CharField(source='category.display_name', read_only=True)
     assigned_to_name = serializers.SerializerMethodField()
-    conversations = ConversationSerializer(many=True, read_only=True)
     attachments = TicketAttachmentSerializer(many=True, read_only=True)
-    available_variables = serializers.SerializerMethodField()
-    mention_count = serializers.SerializerMethodField()
-    channel_display = serializers.CharField(source='get_channel_display', read_only=True)
     
     class Meta:
         model = Ticket
         fields = [
-            'id', 'title', 'description', 'customer', 'customer_name', 'customer_email', 'customer_is_vip',
-            'assigned_to', 'assigned_to_name', 'status', 'priority', 'channel', 'channel_display',
-            'created_at', 'updated_at', 'resolved_at', 'conversations', 'attachments', 
-            'available_variables', 'mention_count'
+            'id', 'title', 'description', 'category', 'category_name',
+            'raised_by', 'raised_by_name', 'raised_by_email',
+            'assigned_to', 'assigned_to_name', 'status', 'priority', 'channel',
+            'created_at', 'updated_at', 'resolved_at', 'attachments'
         ]
+    
+    def get_raised_by_name(self, obj):
+        if obj.raised_by and obj.raised_by.user:
+            return obj.raised_by.user.get_full_name() or obj.raised_by.user.username
+        return 'Guest User'
+    
+    def get_raised_by_email(self, obj):
+        if obj.raised_by and obj.raised_by.user:
+            return obj.raised_by.user.email
+        return 'guest@example.com'
     
     def get_assigned_to_name(self, obj):
         if obj.assigned_to:
             return obj.assigned_to.user.username
         return None
     
-    def get_available_variables(self, obj):
-        """Return all variables available for this ticket"""
-        return obj.get_variable_context()
-    
-    def get_mention_count(self, obj):
-        """Count how many mentions this ticket has"""
-        return Conversation.objects.filter(
-            ticket=obj,
-            is_internal_note=True,
-            mentions__isnull=False
-        ).count()
+    def get_conversations(self, obj):
+        """Return conversations based on user role - Internal notes hidden from customers"""
+        request = self.context.get('request')
+        
+        # Default: only show non-internal notes (for customers and public users)
+        conversations = obj.conversations.filter(is_internal_note=False)
+        
+        # Check if user is authenticated and has access to internal notes
+        if request and hasattr(request, 'user') and request.user.is_authenticated:
+            # Super admin sees everything (including internal notes)
+            if request.user.is_superuser:
+                conversations = obj.conversations.all()
+            # Agent sees everything (including internal notes)
+            elif hasattr(request.user, 'agent'):
+                conversations = obj.conversations.all()
+            # Regular users (students/staff/parents) already filtered (only non-internal notes)
+        
+        return ConversationSerializer(conversations, many=True, context=self.context).data
 
 class PublicTicketSerializer(serializers.ModelSerializer):
-    """Simplified serializer for public ticket creation"""
-    customer_email = serializers.EmailField(write_only=True)
-    customer_name = serializers.CharField(write_only=True)
+    email = serializers.EmailField(write_only=True)
+    name = serializers.CharField(write_only=True)
+    roll_number = serializers.CharField(write_only=True, required=False)
+    category_id = serializers.IntegerField(write_only=True, required=False)
     
     class Meta:
         model = Ticket
-        fields = ['title', 'description', 'customer_email', 'customer_name', 'channel']
+        fields = ['title', 'description', 'category', 'email', 'name', 'roll_number', 'category_id', 'channel']
         extra_kwargs = {
-            'channel': {'read_only': True}
+            'channel': {'read_only': True},
+            'category': {'read_only': True}
         }
     
     def create(self, validated_data):
-        customer_email = validated_data.pop('customer_email')
-        customer_name = validated_data.pop('customer_name')
+        email = validated_data.pop('email')
+        name = validated_data.pop('name')
+        roll_number = validated_data.pop('roll_number', None)
+        category_id = validated_data.pop('category_id', None)
         
-        # Get or create customer
-        organization = Organization.objects.first()  # Assuming QuickCart is first org
-        customer, created = Customer.objects.get_or_create(
-            email=customer_email,
+        # Get or create college
+        college, _ = College.objects.get_or_create(
+            name="ABC College of Engineering",
+            defaults={'domain': 'abc.edu'}
+        )
+        
+        # Get or create user
+        user, created = User.objects.get_or_create(
+            email=email,
+            defaults={'username': email.split('@')[0], 'first_name': name}
+        )
+        
+        # Get or create user profile
+        profile, _ = UserProfile.objects.get_or_create(
+            user=user,
             defaults={
-                'name': customer_name,
-                'organization': organization
+                'college': college,
+                'user_type': 'student',
+                'roll_number': roll_number
             }
         )
         
-        # Create ticket
+        # Get category
+        if category_id:
+            category = TicketCategory.objects.get(id=category_id)
+        else:
+            category = TicketCategory.objects.first()
+        
         ticket = Ticket.objects.create(
-            customer=customer,
-            channel='web',  # Mark as web form submission
+            raised_by=profile,
+            category=category,
+            channel='web',
             **validated_data
         )
         
         return ticket
+
+# ========== CANNED RESPONSE SERIALIZERS ==========
 
 class CannedCategorySerializer(serializers.ModelSerializer):
     response_count = serializers.SerializerMethodField()
     
     class Meta:
         model = CannedCategory
-        fields = ['id', 'name', 'organization', 'description', 'response_count', 'created_at']
+        fields = ['id', 'name', 'college', 'description', 'response_count', 'created_at']
     
     def get_response_count(self, obj):
         return obj.canned_responses.count()
@@ -170,21 +236,18 @@ class CannedResponseSerializer(serializers.ModelSerializer):
         model = CannedResponse
         fields = [
             'id', 'title', 'shortcode', 'content', 'variables', 'category', 'category_name',
-            'department', 'organization', 'usage_count', 'created_at', 'updated_at', 'preview'
+            'department', 'college', 'usage_count', 'created_at', 'updated_at', 'preview'
         ]
         read_only_fields = ['variables', 'usage_count']
     
     def get_preview(self, obj):
-        """Generate preview with sample data"""
         return obj.preview()
 
 class CannedResponseRenderSerializer(serializers.Serializer):
-    """Serializer for rendering a canned response with actual data"""
     ticket_id = serializers.IntegerField(required=True)
     canned_response_id = serializers.IntegerField(required=True)
     
     def validate(self, data):
-        """Validate that both ticket and canned response exist"""
         try:
             ticket = Ticket.objects.get(id=data['ticket_id'])
             canned = CannedResponse.objects.get(id=data['canned_response_id'])
@@ -197,15 +260,12 @@ class CannedResponseRenderSerializer(serializers.Serializer):
         return data
     
     def get_rendered_content(self):
-        """Render the canned response with ticket data"""
         ticket = self.validated_data['ticket']
         canned = self.validated_data['canned']
         
-        # Increment usage count
         canned.usage_count += 1
         canned.save(update_fields=['usage_count'])
         
-        # Render with ticket context
         context = ticket.get_variable_context()
         rendered = canned.render(context)
         
@@ -217,21 +277,24 @@ class CannedResponseRenderSerializer(serializers.Serializer):
             'usage_count': canned.usage_count
         }
 
+# ========== ROUTING RULE SERIALIZERS ==========
+
 class RoutingRuleSerializer(serializers.ModelSerializer):
-    department_display = serializers.CharField(source='get_department_display', read_only=True)
-    priority_display = serializers.CharField(source='get_priority_display', read_only=True)
+    category_name = serializers.CharField(source='category.display_name', read_only=True)
     
     class Meta:
         model = RoutingRule
-        fields = ['id', 'name', 'keywords', 'condition', 'department', 'department_display', 
-                  'priority', 'priority_display', 'is_active', 'organization', 'created_at']
-        
+        fields = ['id', 'name', 'keywords', 'condition', 'category', 'category_name', 
+                  'priority', 'is_active', 'college', 'created_at']
+
+# ========== KNOWLEDGE BASE SERIALIZERS ==========
+
 class KnowledgeCategorySerializer(serializers.ModelSerializer):
     article_count = serializers.SerializerMethodField()
     
     class Meta:
         model = KnowledgeCategory
-        fields = ['id', 'name', 'description', 'organization', 'icon', 'display_order', 
+        fields = ['id', 'name', 'description', 'college', 'icon', 'display_order', 
                   'is_public', 'article_count', 'created_at']
     
     def get_article_count(self, obj):
@@ -247,7 +310,7 @@ class KnowledgeArticleSerializer(serializers.ModelSerializer):
         model = KnowledgeArticle
         fields = [
             'id', 'title', 'summary', 'content', 'category', 'category_name',
-            'organization', 'author', 'author_name', 'tags', 'tags_list',
+            'college', 'author', 'author_name', 'tags', 'tags_list',
             'is_published', 'is_public', 'is_featured',
             'views', 'helpful_count', 'not_helpful_count', 'helpful_percentage',
             'created_at', 'updated_at', 'published_at'
@@ -266,7 +329,6 @@ class KnowledgeArticleSerializer(serializers.ModelSerializer):
         return obj.helpful_percentage()
 
 class PublicKnowledgeArticleSerializer(serializers.ModelSerializer):
-    """Simplified serializer for public view (no internal fields)"""
     category_name = serializers.CharField(source='category.name', read_only=True)
     tags_list = serializers.SerializerMethodField()
     
@@ -284,5 +346,6 @@ class PublicKnowledgeArticleSerializer(serializers.ModelSerializer):
 class ArticleFeedbackSerializer(serializers.ModelSerializer):
     class Meta:
         model = ArticleFeedback
-        fields = ['id', 'article', 'customer', 'session_id', 'is_helpful', 'comment', 'created_at']
+        fields = ['id', 'article', 'user', 'session_id', 'is_helpful', 'comment', 'created_at']
         read_only_fields = ['created_at']
+        

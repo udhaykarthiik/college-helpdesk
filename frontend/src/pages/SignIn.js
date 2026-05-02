@@ -7,6 +7,7 @@ import './SignIn.css';
 function SignIn() {
     const navigate = useNavigate();
     const { login } = useAuth();
+    const [showPassword, setShowPassword] = useState(false);
     const [formData, setFormData] = useState({
         username: '',
         password: ''
@@ -20,8 +21,11 @@ function SignIn() {
             ...formData,
             [e.target.name]: e.target.value
         });
-        // Clear error when typing
         setError(null);
+    };
+
+    const togglePasswordVisibility = () => {
+        setShowPassword(!showPassword);
     };
 
     const handleSubmit = async (e) => {
@@ -42,18 +46,18 @@ function SignIn() {
             const response = await publicApi.login(formData);
             console.log('Login response:', response.data);
             
-            // Use AuthContext login function instead of direct localStorage
             login(response.data.user, {
                 access: response.data.access,
                 refresh: response.data.refresh
             });
 
-            // Show success message
             setSuccess(`Welcome back, ${response.data.user.first_name || response.data.user.username}!`);
 
-            // Redirect based on role
             setTimeout(() => {
-                if (response.data.user.role === 'agent') {
+                const userRole = response.data.user?.role;
+                if (userRole === 'super_admin') {
+                    navigate('/super-admin/dashboard');
+                } else if (userRole === 'agent') {
                     navigate('/agent/dashboard');
                 } else {
                     navigate('/my-tickets');
@@ -76,17 +80,17 @@ function SignIn() {
         <div className="signin-container">
             <div className="signin-card">
                 <h2>Welcome Back</h2>
-                <p className="subtitle">Sign in to your QuickCart account</p>
+                <p className="subtitle">Sign in to ABC Institution Helpdesk</p>
 
                 {error && (
                     <div className="error-message">
-                        ❌ {error}
+                        {error}
                     </div>
                 )}
 
                 {success && (
                     <div className="success-message">
-                        ✅ {success}
+                        ✓ {success}
                     </div>
                 )}
 
@@ -99,22 +103,31 @@ function SignIn() {
                             value={formData.username}
                             onChange={handleChange}
                             required
-                            placeholder="johndoe or john@example.com"
+                            placeholder="Enter your username or email"
                             disabled={loading}
                         />
                     </div>
 
                     <div className="form-group">
                         <label>Password *</label>
-                        <input
-                            type="password"
-                            name="password"
-                            value={formData.password}
-                            onChange={handleChange}
-                            required
-                            placeholder="Enter your password"
-                            disabled={loading}
-                        />
+                        <div className="password-wrapper">
+                            <input
+                                type={showPassword ? "text" : "password"}
+                                name="password"
+                                value={formData.password}
+                                onChange={handleChange}
+                                required
+                                placeholder="Enter your password"
+                                disabled={loading}
+                            />
+                            <button 
+                                type="button" 
+                                className="password-toggle"
+                                onClick={togglePasswordVisibility}
+                            >
+                                {showPassword ? "Hide" : "Show"}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="form-options">
@@ -138,12 +151,6 @@ function SignIn() {
                 <p className="signup-link">
                     Don't have an account? <Link to="/signup">Sign Up</Link>
                 </p>
-
-                <div className="demo-credentials">
-                    <p className="demo-title">Demo Credentials:</p>
-                    <p>Username: newuser123</p>
-                    <p>Password: password123</p>
-                </div>
             </div>
         </div>
     );

@@ -221,3 +221,22 @@ h3 {
     padding: 0 var(--spacing-4);
   }
 }
+
+/* Global Logout Button Styles */
+.logout-btn {
+    background-color: #dc2626 !important;
+    color: white !important;
+    border: none;
+    padding: 8px 20px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.logout-btn:hover {
+    background-color: #b91c1c !important;
+    transform: translateY(-1px);
+    color: white !important;
+}
