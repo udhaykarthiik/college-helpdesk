@@ -243,6 +243,11 @@ class CannedResponse(models.Model):
             value = context.get(var, f'[{var} not found]')
             rendered = rendered.replace(f'{{{{{var}}}}}', str(value))
         return rendered
+    
+    def preview(self):
+        """Return a preview of the content (first 150 characters)"""
+        return self.content[:150] + "..." if len(self.content) > 150 else self.content
+
 
 # Keep RoutingRule, KnowledgeCategory, KnowledgeArticle, ArticleFeedback, TicketAttachment as they are
 # (just update Organization references to College if needed)
