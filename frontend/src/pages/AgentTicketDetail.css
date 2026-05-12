@@ -43,24 +43,6 @@
     margin: 0;
 }
 
-/* Logout Button */
-.logout-btn {
-    background-color: #dc2626;
-    color: white;
-    border: none;
-    padding: 8px 20px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    transition: all 0.2s ease;
-}
-
-.logout-btn:hover {
-    background-color: #b91c1c;
-    transform: translateY(-1px);
-}
-
 /* Grid Layout */
 .ticket-detail-grid {
     display: grid;
@@ -115,17 +97,6 @@
     border-radius: var(--radius-sm);
     border: 1px solid var(--border-light);
     font-size: 0.875rem;
-}
-
-/* VIP Badge */
-.vip-badge {
-    background: #fef5e7;
-    color: var(--warning-orange);
-    padding: 0.25rem 0.5rem;
-    border-radius: var(--radius-sm);
-    font-size: 0.7rem;
-    font-weight: 600;
-    display: inline-block;
 }
 
 /* AI Analysis Card */
@@ -518,6 +489,8 @@
     font-size: 0.875rem;
     resize: vertical;
     font-family: inherit;
+    min-height: 80px;
+    max-height: 200px;
 }
 
 .reply-form textarea:focus {
@@ -574,7 +547,57 @@
     font-size: 0.875rem;
 }
 
-/* Responsive */
+/* ========== CONNECTION STATUS BAR ========== */
+.connection-status-bar {
+    padding: 8px 16px;
+    margin-bottom: 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: center;
+}
+
+.status-connected {
+    background-color: #10b98120;
+    color: #10b981;
+    padding: 6px 14px;
+    border-radius: 20px;
+    display: inline-block;
+}
+
+.status-connected::before {
+    content: "●";
+    font-size: 10px;
+    margin-right: 6px;
+}
+
+.status-disconnected {
+    background-color: #ef444420;
+    color: #ef4444;
+    padding: 6px 14px;
+    border-radius: 20px;
+    display: inline-block;
+}
+
+.status-disconnected::before {
+    content: "●";
+    font-size: 10px;
+    margin-right: 6px;
+    opacity: 0.6;
+}
+
+/* ========== NO CONVERSATIONS STATE ========== */
+.no-conversations {
+    text-align: center;
+    padding: 40px 20px;
+    color: #9ca3af;
+    font-size: 14px;
+    background: #f9fafb;
+    border-radius: 12px;
+    margin: 20px 0;
+}
+
+/* ========== RESPONSIVE ========== */
 @media (max-width: 1024px) {
     .ticket-detail-grid {
         grid-template-columns: 1fr;
@@ -637,5 +660,13 @@
     
     .use-suggestion-btn {
         width: 100%;
+    }
+    
+    .connection-status-bar {
+        font-size: 11px;
+    }
+    
+    .status-connected, .status-disconnected {
+        padding: 4px 10px;
     }
 }

@@ -50,6 +50,7 @@ INSTALLED_APPS = [
     'rest_framework_simplejwt',
     'rest_framework.authtoken',
     'accounts',
+    'channels',
 ]
 
 MIDDLEWARE = [
@@ -93,6 +94,19 @@ DATABASES = {
     }
 }
 
+# ========== CHANNELS & WEBSOCKETS ==========
+ASGI_APPLICATION = 'backend.asgi.application'
+
+# Channel Layers (Redis for production, InMemory for development)
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer",  # Use this for development (no Redis needed)
+        # "BACKEND": "channels_redis.core.RedisChannelLayer",  # Use this for production with Redis
+        # "CONFIG": {
+        #     "hosts": [("127.0.0.1", 6379)],
+        # },
+    },
+}
 
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
