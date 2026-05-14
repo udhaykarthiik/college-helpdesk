@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { agentApi } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
@@ -7,6 +7,8 @@ import './AgentTicketDetail.css';
 function AgentTicketDetail() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const messagesEndRef = useRef(null);
+
     const [ticket, setTicket] = useState(null);
     const [conversations, setConversations] = useState([]);
     const [loading, setLoading] = useState(true);
@@ -16,63 +18,53 @@ function AgentTicketDetail() {
     const [showCanned, setShowCanned] = useState(false);
     const [cannedResponses, setCannedResponses] = useState([]);
     const [renderingCanned, setRenderingCanned] = useState(false);
-    
     const [attachments, setAttachments] = useState([]);
     const [selectedFile, setSelectedFile] = useState(null);
     const [uploading, setUploading] = useState(false);
-
     const [aiAnalysis, setAiAnalysis] = useState(null);
     const [aiSuggestedReply, setAiSuggestedReply] = useState('');
     const [loadingAiReply, setLoadingAiReply] = useState(false);
 
-    // WebSocket connection
-    const { 
-        isConnected, 
-        messages: wsMessages, 
-        sendMessage 
-    } = useWebSocket(id);
+    // WebSocket for real-time chat
+    const { isConnected, messages: wsMessages, sendMessage } = useWebSocket(id);
 
-    // Merge WebSocket messages into conversations (REAL-TIME!)
+    // Scroll to bottom when new messages arrive
+    const scrollToBottom = useCallback(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }, []);
+
+    // Merge incoming WebSocket messages into conversations (dedup by id)
     useEffect(() => {
-        if (wsMessages && wsMessages.length > 0) {
-            console.log('🟡 WebSocket messages received:', wsMessages.length);
-            setConversations(prev => {
-                const existingIds = new Set(prev.map(c => c.id));
-                const newMessages = wsMessages.filter(msg => !existingIds.has(msg.id));
-                if (newMessages.length > 0) {
-                    console.log('✅ Adding real-time messages:', newMessages.length);
-                    return [...prev, ...newMessages];
-                }
-                return prev;
-            });
-        }
+        if (!wsMessages || wsMessages.length === 0) return;
+        setConversations(prev => {
+            const existingIds = new Set(prev.map(c => c.id));
+            const newMsgs = wsMessages.filter(m => !existingIds.has(m.id));
+            if (newMsgs.length === 0) return prev;
+            return [...prev, ...newMsgs];
+        });
     }, [wsMessages]);
 
-    // Initial data fetch
+    // Auto-scroll on new messages
     useEffect(() => {
-        fetchTicket();
-        fetchConversations();
-        fetchCannedResponses();
-        fetchAttachments();
-        fetchAiAnalysis();
-    }, [id]);
+        scrollToBottom();
+    }, [conversations, scrollToBottom]);
 
     const getBackUrl = () => {
         const userStr = localStorage.getItem('user');
         if (userStr) {
-            const userData = JSON.parse(userStr);
-            if (userData.role === 'super_admin') {
-                return '/super-admin/dashboard';
-            }
+            try {
+                const userData = JSON.parse(userStr);
+                if (userData.role === 'super_admin') return '/super-admin/dashboard';
+            } catch (_) {}
         }
         return '/agent/dashboard';
     };
 
-    const fetchTicket = async () => {
+    const fetchTicket = useCallback(async () => {
         try {
             setLoading(true);
             const response = await agentApi.getTicket(id);
-            if (response && response.data) {
+            if (response?.data) {
                 setTicket(response.data);
                 setStatus(response.data.status);
             } else {
@@ -84,9 +76,9 @@ function AgentTicketDetail() {
         } finally {
             setLoading(false);
         }
-    };
+    }, [id, navigate]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const fetchConversations = async () => {
+    const fetchConversations = useCallback(async () => {
         try {
             const response = await agentApi.getConversations(id);
             setConversations(response.data || []);
@@ -94,39 +86,45 @@ function AgentTicketDetail() {
             console.error('Error fetching conversations:', err);
             setConversations([]);
         }
-    };
+    }, [id]);
 
-    const fetchCannedResponses = async () => {
+    const fetchCannedResponses = useCallback(async () => {
         try {
             const response = await agentApi.getCannedResponses();
             setCannedResponses(response.data || []);
         } catch (err) {
             console.error('Error fetching canned responses:', err);
         }
-    };
+    }, []);
 
-    const fetchAttachments = async () => {
+    const fetchAttachments = useCallback(async () => {
         try {
             const response = await agentApi.getAttachments(id);
             setAttachments(response.data || []);
         } catch (err) {
             console.error('Error fetching attachments:', err);
         }
-    };
+    }, [id]);
 
-    const fetchAiAnalysis = async () => {
+    const fetchAiAnalysis = useCallback(async () => {
         try {
             const response = await agentApi.getTicket(id);
             const aiNote = response.data?.conversations?.find(
-                conv => conv.is_internal_note && conv.message && conv.message.includes('[AI ANALYSIS]')
+                conv => conv.is_internal_note && conv.message?.includes('[AI ANALYSIS]')
             );
-            if (aiNote) {
-                setAiAnalysis(aiNote.message);
-            }
+            if (aiNote) setAiAnalysis(aiNote.message);
         } catch (err) {
             console.error('Error fetching AI analysis:', err);
         }
-    };
+    }, [id]);
+
+    useEffect(() => {
+        fetchTicket();
+        fetchConversations();
+        fetchCannedResponses();
+        fetchAttachments();
+        fetchAiAnalysis();
+    }, [fetchTicket, fetchConversations, fetchCannedResponses, fetchAttachments, fetchAiAnalysis]);
 
     const getAiSuggestedReply = async () => {
         setLoadingAiReply(true);
@@ -134,7 +132,7 @@ function AgentTicketDetail() {
             const response = await agentApi.aiSuggestResponse(id);
             setAiSuggestedReply(response.data.suggested_response || '');
         } catch (err) {
-            console.error('Error getting AI suggested reply:', err);
+            console.error('Error getting AI reply suggestion:', err);
         } finally {
             setLoadingAiReply(false);
         }
@@ -142,14 +140,13 @@ function AgentTicketDetail() {
 
     const handleFileUpload = async () => {
         if (!selectedFile) return;
-        
         setUploading(true);
         try {
             await agentApi.addAttachment(id, selectedFile, 'agent');
             setSelectedFile(null);
             fetchAttachments();
-            const fileInput = document.getElementById('file-input');
-            if (fileInput) fileInput.value = '';
+            const el = document.getElementById('file-input');
+            if (el) el.value = '';
         } catch (err) {
             console.error('Error uploading file:', err);
             alert('Failed to upload file');
@@ -187,29 +184,25 @@ function AgentTicketDetail() {
         }
     };
 
-    // Send message via WebSocket (REAL-TIME!)
+    // Send reply — prefer WebSocket, fall back to REST
     const handleAddConversation = async (e) => {
         e.preventDefault();
-        if (!reply.trim()) return;
+        if (!reply.trim() || submitting) return;
 
         setSubmitting(true);
-        
         try {
-            const wsSent = sendMessage(reply, 'agent', false);
-            
-            if (!wsSent || !isConnected) {
-                // Fallback to REST API only if WebSocket fails
-                console.log('⚠️ WebSocket failed, using REST API fallback');
+            const sent = sendMessage(reply, 'agent', false);
+
+            if (!sent) {
+                // WebSocket not ready — use REST fallback
+                console.warn('⚠️ WS not ready, falling back to REST');
                 await agentApi.addConversation(id, {
                     sender_type: 'agent',
                     message: reply,
                     is_internal_note: false
                 });
                 await fetchConversations();
-            } else {
-                console.log('✅ Message sent via WebSocket');
             }
-            
             setReply('');
         } catch (err) {
             console.error('Error sending reply:', err);
@@ -220,32 +213,19 @@ function AgentTicketDetail() {
     };
 
     const handleAddInternalNote = async () => {
-        if (!reply.trim()) return;
-        
-        if (submitting) return;
-
+        if (!reply.trim() || submitting) return;
         setSubmitting(true);
         try {
-            const wsSent = sendMessage(reply, 'agent', true);
-            
-            if (wsSent && isConnected) {
-                await agentApi.addConversation(id, {
-                    sender_type: 'agent',
-                    message: reply,
-                    is_internal_note: true
-                });
-            } else {
-                await agentApi.addConversation(id, {
-                    sender_type: 'agent',
-                    message: reply,
-                    is_internal_note: true
-                });
-            }
-            
+            // Internal notes always go via REST (no broadcast to customer)
+            await agentApi.addConversation(id, {
+                sender_type: 'agent',
+                message: reply,
+                is_internal_note: true
+            });
             setReply('');
             await fetchConversations();
         } catch (err) {
-            console.error('Error adding note:', err);
+            console.error('Error adding internal note:', err);
             alert('Failed to add internal note');
         } finally {
             setSubmitting(false);
@@ -259,11 +239,10 @@ function AgentTicketDetail() {
                 canned_response_id: cannedId,
                 ticket_id: parseInt(id)
             });
-            const renderedContent = response.data.rendered_content;
-            setReply(prev => prev + '\n' + renderedContent);
+            setReply(prev => prev + (prev ? '\n' : '') + response.data.rendered_content);
         } catch (err) {
             console.error('Error rendering canned response:', err);
-            setReply(prev => prev + '\n' + content);
+            setReply(prev => prev + (prev ? '\n' : '') + content);
         } finally {
             setRenderingCanned(false);
             setShowCanned(false);
@@ -272,41 +251,26 @@ function AgentTicketDetail() {
 
     const parseAiAnalysis = () => {
         if (!aiAnalysis) return null;
-        
         const result = {};
-        const lines = aiAnalysis.split('\n');
-        for (const line of lines) {
-            if (line.includes('Category:')) {
-                result.category = line.split(':')[1]?.trim();
-            }
-            if (line.includes('Priority:')) {
-                result.priority = line.split(':')[1]?.trim();
-            }
-            if (line.includes('Sentiment:')) {
-                result.sentiment = line.split(':')[1]?.trim();
-            }
-            if (line.includes('Summary:')) {
-                result.summary = line.split(':')[1]?.trim();
-            }
+        for (const line of aiAnalysis.split('\n')) {
+            if (line.includes('Category:')) result.category = line.split(':')[1]?.trim();
+            if (line.includes('Priority:'))  result.priority  = line.split(':')[1]?.trim();
+            if (line.includes('Sentiment:')) result.sentiment = line.split(':')[1]?.trim();
+            if (line.includes('Summary:'))   result.summary   = line.split(':')[1]?.trim();
         }
         return result;
     };
 
-    const aiData = parseAiAnalysis();
-
-    const getSenderName = (conv) => {
-        if (conv.is_internal_note) return 'Internal Note';
-        if (conv.sender_type === 'agent') return 'Agent';
-        return 'Customer';
+    const getSenderLabel = (conv) => {
+        if (conv.is_internal_note) return '🔒 Internal Note';
+        if (conv.sender_type === 'agent') return conv.sender_name || 'Agent';
+        return conv.sender_name || 'Customer';
     };
 
-    if (loading) {
-        return <div className="loading">Loading ticket...</div>;
-    }
+    const aiData = parseAiAnalysis();
 
-    if (!ticket) {
-        return <div className="loading">Ticket not found</div>;
-    }
+    if (loading) return <div className="loading">Loading ticket...</div>;
+    if (!ticket)  return <div className="loading">Ticket not found</div>;
 
     return (
         <div className="ticket-detail-container">
@@ -318,14 +282,14 @@ function AgentTicketDetail() {
             </div>
 
             <div className="connection-status-bar">
-                {isConnected ? (
-                    <span className="status-connected">● Real-time Connected</span>
-                ) : (
-                    <span className="status-disconnected">● Offline (Refresh to see new messages)</span>
-                )}
+                {isConnected
+                    ? <span className="status-connected">● Real-time Connected</span>
+                    : <span className="status-disconnected">● Offline — new messages require refresh</span>
+                }
             </div>
 
             <div className="ticket-detail-grid">
+                {/* ---- LEFT PANEL ---- */}
                 <div className="ticket-info-panel">
                     <div className="info-section">
                         <h3>Customer Information</h3>
@@ -340,23 +304,22 @@ function AgentTicketDetail() {
                                 <h3>AI Analysis</h3>
                             </div>
                             <div className="ai-content">
-                                {aiData.category && <p><strong>Category:</strong> {aiData.category}</p>}
-                                {aiData.priority && <p><strong>Priority:</strong> <span className={`priority-${aiData.priority?.toLowerCase()}`}> {aiData.priority}</span></p>}
-                                {aiData.sentiment && <p><strong>Sentiment:</strong> <span className={`sentiment-${aiData.sentiment?.toLowerCase()}`}> {aiData.sentiment}</span></p>}
-                                {aiData.summary && <p><strong>Summary:</strong> {aiData.summary}</p>}
+                                {aiData.category  && <p><strong>Category:</strong> {aiData.category}</p>}
+                                {aiData.priority  && <p><strong>Priority:</strong> <span className={`priority-${aiData.priority?.toLowerCase()}`}>{aiData.priority}</span></p>}
+                                {aiData.sentiment && <p><strong>Sentiment:</strong> <span className={`sentiment-${aiData.sentiment?.toLowerCase()}`}>{aiData.sentiment}</span></p>}
+                                {aiData.summary   && <p><strong>Summary:</strong> {aiData.summary}</p>}
                             </div>
                         </div>
                     )}
 
                     <div className="info-section">
                         <h3>Ticket Details</h3>
-                        <p><strong>Status:</strong> 
+                        <p>
+                            <strong>Status:</strong>{' '}
                             <select value={status} onChange={(e) => handleStatusChange(e.target.value)}>
-                                <option value="new">New</option>
-                                <option value="open">Open</option>
-                                <option value="pending">Pending</option>
-                                <option value="resolved">Resolved</option>
-                                <option value="closed">Closed</option>
+                                {['new', 'open', 'pending', 'resolved', 'closed'].map(s => (
+                                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                                ))}
                             </select>
                         </p>
                         <p><strong>Priority:</strong> <span className={`priority-badge priority-${ticket.priority}`}>{ticket.priority}</span></p>
@@ -369,20 +332,21 @@ function AgentTicketDetail() {
                         <h3>Actions</h3>
                         <div className="action-buttons">
                             <button onClick={handleAssignToMe} className="action-btn assign">Assign to Me</button>
-                            <button onClick={handleResolve} className="action-btn resolve">Resolve Ticket</button>
+                            <button onClick={handleResolve}    className="action-btn resolve">Resolve Ticket</button>
                         </div>
                     </div>
                 </div>
 
+                {/* ---- RIGHT PANEL ---- */}
                 <div className="conversations-panel">
                     <div className="conversations-header">
                         <h3>Conversation History</h3>
                         <div className="header-buttons">
                             <button className="ai-suggest-btn" onClick={getAiSuggestedReply} disabled={loadingAiReply}>
-                                AI Suggest {loadingAiReply && '(Loading...)'}
+                                {loadingAiReply ? 'Loading…' : '✨ AI Suggest'}
                             </button>
                             <button className="canned-btn" onClick={() => setShowCanned(!showCanned)} disabled={renderingCanned}>
-                                Canned Responses {renderingCanned && '(Loading...)'}
+                                {renderingCanned ? 'Loading…' : '📋 Canned Responses'}
                             </button>
                         </div>
                     </div>
@@ -390,23 +354,24 @@ function AgentTicketDetail() {
                     {showCanned && (
                         <div className="canned-list">
                             <h4>Quick Templates:</h4>
-                            {cannedResponses.map(cr => (
-                                <button key={cr.id} className="canned-item" onClick={() => insertCannedResponse(cr.id, cr.content)} disabled={renderingCanned}>
-                                    <strong>{cr.title}</strong> ({cr.shortcode})
-                                </button>
-                            ))}
-                            {cannedResponses.length === 0 && <div className="no-canned">No canned responses found. Create some in admin panel.</div>}
+                            {cannedResponses.length === 0
+                                ? <div className="no-canned">No canned responses found.</div>
+                                : cannedResponses.map(cr => (
+                                    <button key={cr.id} className="canned-item" onClick={() => insertCannedResponse(cr.id, cr.content)} disabled={renderingCanned}>
+                                        <strong>{cr.title}</strong> <span className="shortcode">({cr.shortcode})</span>
+                                    </button>
+                                ))
+                            }
                         </div>
                     )}
 
                     <div className="conversations-list">
-                        {conversations.length === 0 ? (
-                            <div className="no-conversations"><p>No messages yet. Start the conversation!</p></div>
-                        ) : (
-                            conversations.map((conv, index) => (
+                        {conversations.length === 0
+                            ? <div className="no-conversations"><p>No messages yet. Start the conversation!</p></div>
+                            : conversations.map((conv, index) => (
                                 <div key={conv.id || index} className={`message ${conv.sender_type} ${conv.is_internal_note ? 'internal-note' : ''}`}>
                                     <div className="message-header">
-                                        <span className="sender">{getSenderName(conv)}</span>
+                                        <span className="sender">{getSenderLabel(conv)}</span>
                                         <span className="time">{new Date(conv.created_at).toLocaleString()}</span>
                                     </div>
                                     <div className="message-body">
@@ -414,52 +379,76 @@ function AgentTicketDetail() {
                                     </div>
                                 </div>
                             ))
-                        )}
+                        }
+                        <div ref={messagesEndRef} />
                     </div>
 
+                    {/* Attachments */}
                     <div className="attachment-section">
                         <h4>Attachments</h4>
                         <div className="attachment-list">
-                            {attachments.map(att => (
-                                <div key={att.id} className="attachment-item">
-                                    <a href={att.file_url} target="_blank" rel="noopener noreferrer">📎 {att.filename} ({att.file_size_display})</a>
-                                    <span className="attachment-by">Uploaded by: {att.uploaded_by}</span>
-                                </div>
-                            ))}
-                            {attachments.length === 0 && <div className="no-attachments">No attachments yet</div>}
+                            {attachments.length === 0
+                                ? <div className="no-attachments">No attachments yet</div>
+                                : attachments.map(att => (
+                                    <div key={att.id} className="attachment-item">
+                                        <a href={att.file_url} target="_blank" rel="noopener noreferrer">
+                                            📎 {att.filename} ({att.file_size_display})
+                                        </a>
+                                        <span className="attachment-by">by {att.uploaded_by}</span>
+                                    </div>
+                                ))
+                            }
                         </div>
                         <div className="upload-section">
                             <input type="file" id="file-input" onChange={(e) => setSelectedFile(e.target.files[0])} />
                             <button onClick={handleFileUpload} disabled={!selectedFile || uploading} className="upload-btn">
-                                {uploading ? 'Uploading...' : 'Upload File'}
+                                {uploading ? 'Uploading…' : 'Upload File'}
                             </button>
                         </div>
                     </div>
 
+                    {/* AI Suggested Reply */}
                     {aiSuggestedReply && (
                         <div className="ai-suggestion">
                             <div className="ai-suggestion-header">
-                                <span>AI Suggested Reply:</span>
+                                <span>✨ AI Suggested Reply:</span>
                                 <button onClick={() => setReply(aiSuggestedReply)} className="use-suggestion-btn">Use This</button>
                             </div>
                             <div className="ai-suggestion-content">{aiSuggestedReply}</div>
                         </div>
                     )}
 
+                    {/* Reply Form */}
                     <div className="reply-form">
                         <h3>Reply to Customer</h3>
                         <textarea
                             value={reply}
                             onChange={(e) => setReply(e.target.value)}
-                            placeholder="Type your reply here..."
+                            onKeyDown={(e) => {
+                                // Ctrl/Cmd + Enter to send
+                                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                                    handleAddConversation(e);
+                                }
+                            }}
+                            placeholder="Type your reply… (Ctrl+Enter to send)"
                             rows="4"
                             className="reply-textarea"
                         />
                         <div className="reply-buttons">
-                            <button type="button" onClick={handleAddConversation} disabled={submitting || !reply.trim()} className="send-btn">
-                                {submitting ? 'Sending...' : 'Send Reply'}
+                            <button
+                                type="button"
+                                onClick={handleAddConversation}
+                                disabled={submitting || !reply.trim()}
+                                className="send-btn"
+                            >
+                                {submitting ? 'Sending…' : 'Send Reply'}
                             </button>
-                            <button type="button" onClick={handleAddInternalNote} disabled={submitting || !reply.trim()} className="note-btn">
+                            <button
+                                type="button"
+                                onClick={handleAddInternalNote}
+                                disabled={submitting || !reply.trim()}
+                                className="note-btn"
+                            >
                                 Add Internal Note
                             </button>
                         </div>
@@ -471,4 +460,3 @@ function AgentTicketDetail() {
 }
 
 export default AgentTicketDetail;
-

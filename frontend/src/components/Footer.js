@@ -33,14 +33,8 @@ function Footer() {
 
                 <div className="footer-section">
                     <h4>Connect With Us</h4>
-                    <div className="social-links">
-                        <a href="https://facebook.com" target="_blank" rel="noopener noreferrer" className="social-link">Faceboo</a>
-                        <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="social-link">Twitter</a>
-                        <a href="https://instagram.com" target="_blank" rel="noopener noreferrer" className="social-link">Instagram</a>
-                        <a href="https://linkedin.com" target="_blank" rel="noopener noreferrer" className="social-link">LinkedIn</a>
-                    </div>
                     <p className="contact-email">support@abcinstitution.com</p>
-                    <p className="contact-phone">1-800-123-4567</p>
+                    <p className="contact-phone">+91 44 1234 5678</p>
                 </div>
             </div>
             
