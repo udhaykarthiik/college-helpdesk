@@ -127,6 +127,48 @@
   font-size: 1rem;
 }
 
+/* Info Banner - For non-logged in users */
+.info-banner {
+  background-color: #fef3c7;
+  border: 1px solid #f59e0b;
+  border-radius: 8px;
+  padding: 10px 15px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.info-banner a {
+  color: #f59e0b;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.info-banner a:hover {
+  text-decoration: underline;
+}
+
+/* Login to Reply Message */
+.login-to-reply {
+  background-color: #f3f4f6;
+  padding: 20px;
+  text-align: center;
+  border-radius: 8px;
+  color: #6b7280;
+}
+
+.login-to-reply a {
+  color: #3b82f6;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.login-to-reply a:hover {
+  text-decoration: underline;
+}
+
 /* Ticket Result */
 .ticket-result {
   margin-top: var(--spacing-6);
@@ -274,6 +316,17 @@
   line-height: 1.5;
   white-space: pre-wrap;
   font-size: 0.875rem;
+}
+
+/* Ticket Closed Notice */
+.ticket-closed-notice {
+  background-color: #f3f4f6;
+  padding: 15px;
+  text-align: center;
+  border-radius: 8px;
+  color: #6b7280;
+  margin: 20px 0;
+  font-size: 14px;
 }
 
 /* ========== CONNECTION STATUS BAR ========== */
@@ -499,5 +552,14 @@
   
   .send-reply-btn {
     width: 100%;
+  }
+  
+  .info-banner {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .login-to-reply {
+    padding: 15px;
   }
 }

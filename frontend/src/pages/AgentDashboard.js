@@ -4,12 +4,12 @@ import { agentApi } from '../services/api';
 import { useWebSocket } from '../hooks/useWebSocket';
 import './AgentDashboard.css';
 
-// ─── helpers ───────────────────────────────────────────────────────────────
+// ── helpers ──────────────────────────────────────────────────────────────────
 
 function calcStats(list) {
     return list.reduce(
         (acc, t) => {
-            acc.total    += 1;
+            acc.total += 1;
             if (t.status === 'new')      acc.new      += 1;
             if (t.status === 'open')     acc.open     += 1;
             if (t.status === 'pending')  acc.pending  += 1;
@@ -20,7 +20,24 @@ function calcStats(list) {
     );
 }
 
-// ─── component ─────────────────────────────────────────────────────────────
+/**
+ * Safe merge — never overwrites an existing truthy value with undefined/null/empty.
+ * This prevents customer_name from disappearing when a WS update only carries
+ * partial ticket data.
+ */
+function safeMerge(existing, incoming) {
+    const merged = { ...existing };
+    Object.keys(incoming).forEach(key => {
+        const val = incoming[key];
+        // Only overwrite if the incoming value is actually meaningful
+        if (val !== undefined && val !== null && val !== '') {
+            merged[key] = val;
+        }
+    });
+    return merged;
+}
+
+// ── component ────────────────────────────────────────────────────────────────
 
 function AgentDashboard() {
     const navigate = useNavigate();
@@ -30,46 +47,42 @@ function AgentDashboard() {
     const [tickets, setTickets] = useState([]);
     const [stats,   setStats]   = useState({ total: 0, new: 0, open: 0, pending: 0, resolved: 0 });
     const [filter,  setFilter]  = useState('all');
+    const [toast,   setToast]   = useState(null);
+    const toastTimer = useRef(null);
 
-    // Toast state for "new ticket" notification
-    const [toast, setToast] = useState(null);
-    const toastTimerRef = useRef(null);
-
-    // ── callback fired DIRECTLY when a ticket_update WS message arrives ──
-    // Using useCallback with no deps so the reference is stable and doesn't
-    // cause the WS hook to reconnect on every render.
+    // ── WS callback — fires DIRECTLY when ticket_update arrives ──────────
+    // useCallback with empty deps → stable reference → hook never reconnects
     const handleTicketUpdate = useCallback((incomingTicket, updateType) => {
-        console.log(`📥 WS ticket_update [${updateType}]:`, incomingTicket?.id);
+        if (!incomingTicket) return;
+        console.log(`📥 WS [${updateType}] ticket #${incomingTicket.id}`);
 
         setTickets(prev => {
             const idx = prev.findIndex(t => t.id === incomingTicket.id);
             let next;
             if (idx !== -1) {
-                // Merge update into the existing row
-                next = prev.map((t, i) => i === idx ? { ...t, ...incomingTicket } : t);
+                // ✅ safeMerge: never wipe customer_name with undefined
+                next = prev.map((t, i) => i === idx ? safeMerge(t, incomingTicket) : t);
             } else {
-                // Prepend brand-new ticket to top of list
+                // New ticket — prepend
                 next = [incomingTicket, ...prev];
             }
-            // Recalculate stats in the same setState call
             setStats(calcStats(next));
             return next;
         });
 
-        // Show a brief toast for new tickets
         if (updateType === 'new_ticket') {
-            clearTimeout(toastTimerRef.current);
+            clearTimeout(toastTimer.current);
             setToast(`New ticket #${incomingTicket.id}: ${incomingTicket.title}`);
-            toastTimerRef.current = setTimeout(() => setToast(null), 5000);
+            toastTimer.current = setTimeout(() => setToast(null), 5000);
         }
-    }, []); // no deps — intentionally stable
+    }, []);
 
-    // ── WebSocket — dashboard mode ────────────────────────────────────────
+    // ── WebSocket ─────────────────────────────────────────────────────────
     const { isConnected } = useWebSocket('dashboard', {
         onTicketUpdate: handleTicketUpdate,
     });
 
-    // ── initial REST fetch ────────────────────────────────────────────────
+    // ── Initial fetch ─────────────────────────────────────────────────────
     const fetchTickets = useCallback(async () => {
         try {
             setLoading(true);
@@ -87,7 +100,6 @@ function AgentDashboard() {
     useEffect(() => {
         const userStr = localStorage.getItem('user');
         const token   = localStorage.getItem('access_token');
-
         if (!userStr || !token) { navigate('/signin'); return; }
 
         const userData = JSON.parse(userStr);
@@ -95,12 +107,10 @@ function AgentDashboard() {
 
         setUser(userData);
         fetchTickets();
-
-        // Cleanup toast timer on unmount
-        return () => clearTimeout(toastTimerRef.current);
+        return () => clearTimeout(toastTimer.current);
     }, [navigate, fetchTickets]);
 
-    // ── filtered view ─────────────────────────────────────────────────────
+    // ── Filtered list ─────────────────────────────────────────────────────
     const filteredTickets = filter === 'all'
         ? tickets
         : tickets.filter(t => t.status === filter);
@@ -110,7 +120,7 @@ function AgentDashboard() {
     return (
         <div className="agent-dashboard">
 
-            {/* Toast notification */}
+            {/* Toast */}
             {toast && (
                 <div className="ws-toast">
                     🎫 {toast}
@@ -127,7 +137,7 @@ function AgentDashboard() {
                 <div className="realtime-indicator">
                     {isConnected
                         ? <span className="status-connected">● Live</span>
-                        : <span className="status-disconnected">● Offline</span>
+                        : <span className="status-disconnected">● Connecting…</span>
                     }
                 </div>
             </div>
@@ -148,7 +158,7 @@ function AgentDashboard() {
                 ))}
             </div>
 
-            {/* Ticket table */}
+            {/* Table */}
             <div className="tickets-section">
                 <div className="section-header">
                     <h2>All Tickets</h2>
@@ -190,7 +200,8 @@ function AgentDashboard() {
                                 <tr key={ticket.id}>
                                     <td>#{ticket.id}</td>
                                     <td>{ticket.title}</td>
-                                    <td>{ticket.customer_name}</td>
+                                    {/* ✅ fallback so cell is never blank */}
+                                    <td>{ticket.customer_name || ticket.raised_by_name || '—'}</td>
                                     <td>
                                         <span className={`status-badge status-${ticket.status}`}>
                                             {ticket.status}
@@ -213,7 +224,6 @@ function AgentDashboard() {
                                     </td>
                                 </tr>
                             ))}
-
                             {filteredTickets.length === 0 && (
                                 <tr>
                                     <td colSpan="8" style={{ textAlign: 'center', padding: '2rem', color: '#888' }}>
